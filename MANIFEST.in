@@ -1,11 +1,4 @@
 include LICENSE
 include README.md
 include pyproject.toml
-recursive-include src *
-recursive-include pyneat-rs *.rs *.toml *.lock *.py *.md *.txt *.json
-recursive-include pyneat-rs/src *
-prune pyneat-rs/target
-prune **/__pycache__
-prune **/*.pyc
-prune **/*.pyo
-prune **/*.bak
+recursive-include pyneat-rs/pyneat *.py

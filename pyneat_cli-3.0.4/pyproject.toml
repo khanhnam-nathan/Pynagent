@@ -66,6 +66,7 @@ manifest-path = "pyneat-rs/Cargo.toml"
 module-name = "pyneat_rs"
 args = ["--release"]
 packages = ["pyneat"]
+source = "src"
 
 [tool.pyneat]
 # Default rule settings for pyneat clean / pyneat clean-dir
