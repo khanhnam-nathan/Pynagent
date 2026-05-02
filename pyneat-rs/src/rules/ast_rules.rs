@@ -7,9 +7,37 @@
 //! Copyright (C) 2026 PyNEAT Authors
 
 use crate::rules::base::{extract_snippet, Finding, Rule, Severity};
-use crate::scanner::tree_sitter::{walk_tree, NodeInfo};
-use tree_sitter::Tree;
+use crate::scanner::tree_sitter::walk_tree;
+use once_cell::sync::Lazy;
+use regex::Regex;
 use std::collections::HashSet;
+use tree_sitter::Tree;
+
+static SEC001_PATTERNS: Lazy<Vec<&'static str>> = Lazy::new(|| vec![
+    r"os\.system\s*\(",
+    r"subprocess\.run\s*\([^)]*shell\s*=\s*True",
+    r"os\.popen\s*\(",
+]);
+
+static SEC001_AST_PATTERNS: Lazy<Vec<&'static str>> = Lazy::new(|| vec![
+    "os.system",
+    "os.popen",
+]);
+
+static CRED_PATTERNS: Lazy<Vec<(&'static str, &'static str, &'static str)>> = Lazy::new(|| vec![
+    (r"AKIA[0-9A-Z]{16}", "AWS Access Key", "CWE-798"),
+    (r"ghp_[a-zA-Z0-9]{36}", "GitHub Personal Access Token", "CWE-798"),
+    (r"glpat-[a-zA-Z0-9-]{20}", "GitLab Personal Access Token", "CWE-798"),
+    (r"sk-[a-zA-Z0-9]{48}", "OpenAI API Key", "CWE-798"),
+    (r"sk_live_[a-zA-Z0-9]{24}", "Stripe API Key", "CWE-798"),
+    (r"xox[baprs]-[a-zA-Z0-9-]{10,}", "Slack Token", "CWE-798"),
+]);
+
+static SQL_PATTERNS: Lazy<Vec<&'static str>> = Lazy::new(|| vec![
+    r"cursor\.execute\s*\([^)]+\+",
+    r"db\.execute\s*\([^)]+\+",
+    r"connection\.execute\s*\([^)]+\+",
+]);
 
 // --------------------------------------------------------------------------
 // AST Rule trait - extends base Rule with tree-sitter support
@@ -40,29 +68,17 @@ pub trait AstRule {
 pub struct AstCommandInjectionRule;
 
 impl AstCommandInjectionRule {
-    pub fn new() -> Self {
-        Self
-    }
+    pub fn new() -> Self { Self }
 }
 
 impl AstRule for AstCommandInjectionRule {
-    fn has_ast_detection(&self) -> bool {
-        true
-    }
+    fn has_ast_detection(&self) -> bool { true }
 }
 
 impl Rule for AstCommandInjectionRule {
-    fn id(&self) -> &str {
-        "SEC-001-AST"
-    }
-
-    fn name(&self) -> &str {
-        "Command Injection (AST-based)"
-    }
-
-    fn severity(&self) -> Severity {
-        Severity::Critical
-    }
+    fn id(&self) -> &str { "SEC-001-AST" }
+    fn name(&self) -> &str { "Command Injection (AST-based)" }
+    fn severity(&self) -> Severity { Severity::Critical }
 
     fn detect(&self, tree: &Tree, code: &str) -> Vec<Finding> {
         let regex_findings = self.detect_regex(code);
@@ -102,23 +118,15 @@ impl Rule for AstCommandInjectionRule {
         }
     }
 
-    fn supports_auto_fix(&self) -> bool {
-        true
-    }
+    fn supports_auto_fix(&self) -> bool { true }
 }
 
 impl AstCommandInjectionRule {
     fn detect_regex(&self, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
 
-        let patterns = [
-            r"os\.system\s*\(",
-            r"subprocess\.run\s*\([^)]*shell\s*=\s*True",
-            r"os\.popen\s*\(",
-        ];
-
-        for pattern in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for pattern in SEC001_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {
@@ -144,8 +152,8 @@ impl AstCommandInjectionRule {
         let mut findings = Vec::new();
         let mut seen_starts: HashSet<usize> = HashSet::new();
 
-        for pattern in &["os.system", "os.popen"] {
-            if let Ok(re) = regex::Regex::new(&regex::escape(pattern)) {
+        for pattern in SEC001_AST_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(&regex::escape(pattern)) {
                 for m in re.find_iter(code) {
                     seen_starts.insert(m.start());
                 }
@@ -195,9 +203,7 @@ impl AstCommandInjectionRule {
 pub struct AstHardcodedSecretsRule;
 
 impl AstHardcodedSecretsRule {
-    pub fn new() -> Self {
-        Self
-    }
+    pub fn new() -> Self { Self }
 
     fn classify_secret(var_name: &str, value: &str) -> (&'static str, f32) {
         let var_lower = var_name.to_lowercase();
@@ -216,22 +222,13 @@ impl AstHardcodedSecretsRule {
             return ("production_secret", 0.9);
         }
 
-        // Check for placeholder values
         let placeholders = ["changeme", "your-secret", "your_secret", "example-key", "example_key", "test-token", "test_token"];
         if placeholders.iter().any(|p| value_lower.contains(p)) {
             return ("placeholder", 0.95);
         }
 
-        // Check for real credential format
-        let cred_patterns = [
-            r"AKIA[0-9A-Z]{16}",
-            r"ghp_[a-zA-Z0-9]{36}",
-            r"glpat-[a-zA-Z0-9-]{20}",
-            r"sk-[a-zA-Z0-9]{48}",
-            r"sk_live_[a-zA-Z0-9]{24}",
-        ];
-        for pat in &cred_patterns {
-            if let Ok(re) = regex::Regex::new(pat) {
+        for (pat, _, _) in CRED_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pat) {
                 if re.is_match(value) {
                     return ("production_secret", 0.9);
                 }
@@ -257,60 +254,16 @@ impl AstHardcodedSecretsRule {
         }
         (String::new(), None)
     }
-
-    fn detect_credential_formats(&self, code: &str) -> Vec<Finding> {
-        let mut findings = Vec::new();
-        let cred_patterns = [
-            (r"AKIA[0-9A-Z]{16}", "AWS Access Key", "CWE-798"),
-            (r"ghp_[a-zA-Z0-9]{36}", "GitHub Personal Access Token", "CWE-798"),
-            (r"glpat-[a-zA-Z0-9-]{20}", "GitLab Personal Access Token", "CWE-798"),
-            (r"sk-[a-zA-Z0-9]{48}", "OpenAI API Key", "CWE-798"),
-            (r"sk_live_[a-zA-Z0-9]{24}", "Stripe API Key", "CWE-798"),
-            (r"xox[baprs]-[a-zA-Z0-9-]{10,}", "Slack Token", "CWE-798"),
-        ];
-
-        for (pattern, cred_type, cwe) in cred_patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
-                for m in re.find_iter(code) {
-                    let snippet = extract_snippet(code, m.start(), m.end());
-                    findings.push(Finding {
-                        rule_id: "SEC-010".to_string(),
-                        severity: Severity::High.as_str().to_string(),
-                        cwe_id: Some(cwe.to_string()),
-                        cvss_score: Some(7.5),
-                        owasp_id: Some("A02:2021".to_string()),
-                        start: m.start(),
-                        end: m.end(),
-                        snippet,
-                        problem: format!("Hardcoded {} detected", cred_type),
-                        fix_hint: "Use environment variables instead of hardcoding secrets.".to_string(),
-                        auto_fix_available: false,
-                    });
-                }
-            }
-        }
-        findings
-    }
 }
 
 impl AstRule for AstHardcodedSecretsRule {
-    fn has_ast_detection(&self) -> bool {
-        true
-    }
+    fn has_ast_detection(&self) -> bool { true }
 }
 
 impl Rule for AstHardcodedSecretsRule {
-    fn id(&self) -> &str {
-        "SEC-010-AST"
-    }
-
-    fn name(&self) -> &str {
-        "Hardcoded Secrets (AST-based)"
-    }
-
-    fn severity(&self) -> Severity {
-        Severity::High
-    }
+    fn id(&self) -> &str { "SEC-010-AST" }
+    fn name(&self) -> &str { "Hardcoded Secrets (AST-based)" }
+    fn severity(&self) -> Severity { Severity::High }
 
     fn detect(&self, tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
@@ -378,6 +331,34 @@ impl Rule for AstHardcodedSecretsRule {
     }
 }
 
+impl AstHardcodedSecretsRule {
+    fn detect_credential_formats(&self, code: &str) -> Vec<Finding> {
+        let mut findings = Vec::new();
+
+        for (pattern, cred_type, cwe) in CRED_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let snippet = extract_snippet(code, m.start(), m.end());
+                    findings.push(Finding {
+                        rule_id: "SEC-010".to_string(),
+                        severity: Severity::High.as_str().to_string(),
+                        cwe_id: Some(cwe.to_string()),
+                        cvss_score: Some(7.5),
+                        owasp_id: Some("A02:2021".to_string()),
+                        start: m.start(),
+                        end: m.end(),
+                        snippet,
+                        problem: format!("Hardcoded {} detected", cred_type),
+                        fix_hint: "Use environment variables instead of hardcoding secrets.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings
+    }
+}
+
 // --------------------------------------------------------------------------
 // AST-based SEC-002: SQL Injection
 // Walks AST to find execute() calls with string concatenation
@@ -386,43 +367,24 @@ impl Rule for AstHardcodedSecretsRule {
 pub struct AstSqlInjectionRule;
 
 impl AstSqlInjectionRule {
-    pub fn new() -> Self {
-        Self
-    }
+    pub fn new() -> Self { Self }
 }
 
 impl AstRule for AstSqlInjectionRule {
-    fn has_ast_detection(&self) -> bool {
-        true
-    }
+    fn has_ast_detection(&self) -> bool { true }
 }
 
 impl Rule for AstSqlInjectionRule {
-    fn id(&self) -> &str {
-        "SEC-002-AST"
-    }
-
-    fn name(&self) -> &str {
-        "SQL Injection (AST-based)"
-    }
-
-    fn severity(&self) -> Severity {
-        Severity::Critical
-    }
+    fn id(&self) -> &str { "SEC-002-AST" }
+    fn name(&self) -> &str { "SQL Injection (AST-based)" }
+    fn severity(&self) -> Severity { Severity::Critical }
 
     fn detect(&self, tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
         let mut seen_starts: HashSet<usize> = HashSet::new();
 
-        // Regex pass
-        let patterns = [
-            r"cursor\.execute\s*\([^)]+\+",
-            r"db\.execute\s*\([^)]+\+",
-            r"connection\.execute\s*\([^)]+\+",
-        ];
-
-        for pattern in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for pattern in SQL_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     seen_starts.insert(m.start());
                     let snippet = extract_snippet(code, m.start(), m.end());
@@ -443,7 +405,6 @@ impl Rule for AstSqlInjectionRule {
             }
         }
 
-        // AST pass
         walk_tree(tree, code, |info| {
             if info.node_type == "call" {
                 let text = info.text();

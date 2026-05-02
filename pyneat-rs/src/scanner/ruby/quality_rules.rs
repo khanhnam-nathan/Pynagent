@@ -404,6 +404,253 @@ impl LangRule for RubyEmptyRescue {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// RUBY-QUAL-007: for Loop Instead of .each
+// Severity: info
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct RubyForLoop;
+
+impl LangRule for RubyForLoop {
+    fn id(&self) -> &str { "RUBY-QUAL-007" }
+    fn name(&self) -> &str { "for Loop Instead of .each" }
+    fn severity(&self) -> &'static str { "info" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let re = Regex::new(r"(?m)^\s*for\s+\w+\s+in\s+").unwrap();
+        for m in re.find_iter(code) {
+            let line = code[..m.start()].matches('\n').count() + 1;
+            let (start, end) = get_line_offsets(code, line);
+            let line_text = get_line_text(code, line).unwrap_or_default();
+            findings.push(LangFinding {
+                rule_id: self.id().to_string(),
+                severity: self.severity().to_string(),
+                line,
+                column: 0,
+                start_byte: start,
+                end_byte: end,
+                snippet: line_text.trim().to_string(),
+                problem: "for...in loop detected. Ruby idiom prefers .each.".to_string(),
+                fix_hint: "Use .each: array.each { |item| ... }".to_string(),
+                auto_fix_available: false,
+            });
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RUBY-QUAL-008: Global Variable Usage
+// Severity: low
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct RubyGlobalVariableUsage;
+
+impl LangRule for RubyGlobalVariableUsage {
+    fn id(&self) -> &str { "RUBY-QUAL-008" }
+    fn name(&self) -> &str { "Global Variable Usage" }
+    fn severity(&self) -> &'static str { "low" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let re = Regex::new(r"\$[a-zA-Z_][a-zA-Z0-9_]*").unwrap();
+        for m in re.find_iter(code) {
+            let line = code[..m.start()].matches('\n').count() + 1;
+            let (start, end) = get_line_offsets(code, line);
+            let line_text = get_line_text(code, line).unwrap_or_default();
+            findings.push(LangFinding {
+                rule_id: self.id().to_string(),
+                severity: self.severity().to_string(),
+                line,
+                column: 0,
+                start_byte: start,
+                end_byte: end,
+                snippet: line_text.trim().to_string(),
+                problem: format!("Global variable '${}' detected.", m.as_str().trim_start_matches('$')),
+                fix_hint: "Use instance variables (@var), class variables (@@var), or constants (CONST) instead.".to_string(),
+                auto_fix_available: false,
+            });
+        }
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RUBY-QUAL-009: Missing Query Result nil Check
+// Severity: medium
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct RubyMissingNilCheck;
+
+impl LangRule for RubyMissingNilCheck {
+    fn id(&self) -> &str { "RUBY-QUAL-009" }
+    fn name(&self) -> &str { "Missing nil Check on Query Result" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        for call in &tree.calls {
+            if call.callee.contains("find(") || call.callee.contains("find_by") || call.callee.contains("first") {
+                let after = &code[code.lines().take(call.start_line).collect::<Vec<_>>().join("\n").len()..];
+                let next_200 = &after[..after.len().min(300)];
+                let has_nil_check = next_200.contains("nil?") || next_200.contains(".present?") || next_200.contains("if ");
+                if !has_nil_check {
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line: call.start_line,
+                        column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        snippet: code.lines().nth(call.start_line - 1).unwrap_or("").trim().to_string(),
+                        problem: "Query result may be nil but is not checked before use.".to_string(),
+                        fix_hint: "Add nil check: result = Model.find(...); return unless result.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RUBY-QUAL-010: Empty Rescue Block
+// Severity: low
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct RubyEmptyRescueBlock;
+
+impl LangRule for RubyEmptyRescueBlock {
+    fn id(&self) -> &str { "RUBY-QUAL-010" }
+    fn name(&self) -> &str { "Empty Rescue Block" }
+    fn severity(&self) -> &'static str { "low" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let re = Regex::new(r"(?m)^\s*rescue\s*=>\s*\w+\s*$").unwrap();
+        for m in re.find_iter(code) {
+            let line = code[..m.start()].matches('\n').count() + 1;
+            let (start, end) = get_line_offsets(code, line);
+            let line_text = get_line_text(code, line).unwrap_or_default();
+            findings.push(LangFinding {
+                rule_id: self.id().to_string(),
+                severity: self.severity().to_string(),
+                line,
+                column: 0,
+                start_byte: start,
+                end_byte: end,
+                snippet: line_text.trim().to_string(),
+                problem: "Rescue block assigned to variable but empty.".to_string(),
+                fix_hint: "Handle the exception: rescue => e; logger.error(e.message).".to_string(),
+                auto_fix_available: false,
+            });
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RUBY-QUAL-011: Magic Number in Code
+// Severity: low | CWE-184
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct RubyMagicNumber;
+
+impl LangRule for RubyMagicNumber {
+    fn id(&self) -> &str { "RUBY-QUAL-011" }
+    fn name(&self) -> &str { "Magic Number in Code" }
+    fn severity(&self) -> &'static str { "low" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let re = Regex::new(r"\d{3,}").unwrap();
+        for m in re.find_iter(code) {
+            let line = code[..m.start()].matches('\n').count() + 1;
+            let line_text = get_line_text(code, line).unwrap_or_default();
+            if !line_text.trim().starts_with('#') && !line_text.contains('=') {
+                // Skip if preceded by word char (identifier part) or dot (float/version)
+                let prev_char = if m.start() > 0 { code[..m.start()].chars().last() } else { None };
+                let next_char = if m.end() < code.len() { code[m.end()..].chars().next() } else { None };
+                let preceded_by_word = prev_char.map_or(false, |c| c.is_alphanumeric() || c == '_');
+                let preceded_by_dot = prev_char == Some('.');
+                let followed_by_digit = next_char.map_or(false, |c| c.is_ascii_digit());
+                if preceded_by_word || preceded_by_dot || followed_by_digit {
+                    continue;
+                }
+                let (start, end) = get_line_offsets(code, line);
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: self.severity().to_string(),
+                    line,
+                    column: 0,
+                    start_byte: start,
+                    end_byte: end,
+                    snippet: line_text.trim().to_string(),
+                    problem: format!("Magic number '{}' found.", m.as_str()),
+                    fix_hint: "Define as a constant: MAX_RETRIES = 500.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RUBY-QUAL-012: TODO/FIXME Comments
+// Severity: info | CWE-546
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct RubyTodoComments;
+
+impl LangRule for RubyTodoComments {
+    fn id(&self) -> &str { "RUBY-QUAL-012" }
+    fn name(&self) -> &str { "TODO / FIXME Comments" }
+    fn severity(&self) -> &'static str { "info" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let patterns = [
+            (r"(?i)TODO", "TODO marker"),
+            (r"(?i)FIXME", "FIXME marker"),
+            (r"(?i)HACK", "HACK marker"),
+        ];
+        for (pat, label) in &patterns {
+            if let Ok(re) = Regex::new(pat) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!("{} found.", label),
+                        fix_hint: "Resolve or add tracking issue.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Module exports
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -416,5 +663,10 @@ pub fn ruby_quality_rules() -> Vec<Box<dyn LangRule>> {
         Box::new(RubyMagicNumbers),
         Box::new(RubyMissingSafeNavigation),
         Box::new(RubyEmptyRescue),
+        Box::new(RubyForLoop),
+        Box::new(RubyGlobalVariableUsage),
+        Box::new(RubyMissingNilCheck),
+        Box::new(RubyEmptyRescueBlock),
+        Box::new(RubyMagicNumber),
     ]
 }

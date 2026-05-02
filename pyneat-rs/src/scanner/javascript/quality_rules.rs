@@ -549,6 +549,357 @@ impl LangRule for JsDuplicateImport {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// JS-QUAL-007: Deep Nesting
+// Severity: medium | CWE-510
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JsDeepNestingQuality;
+
+impl LangRule for JsDeepNestingQuality {
+    fn id(&self) -> &str { "JS-QUAL-007" }
+    fn name(&self) -> &str { "Deep Nesting (> 4 levels)" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let max_depth = 4;
+        for (line_idx, line) in code.lines().enumerate() {
+            let trimmed = line.trim();
+            let leading = line.len() - line.trim_start().len();
+            let depth = leading / 4;
+            if depth > max_depth && !trimmed.is_empty() && !trimmed.starts_with("//") {
+                let (start, end) = get_line_offsets(code, line_idx + 1);
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: self.severity().to_string(),
+                    line: line_idx + 1,
+                    column: 0,
+                    start_byte: start,
+                    end_byte: end,
+                    snippet: trimmed.to_string(),
+                    problem: format!("Deep nesting (depth {}).", depth),
+                    fix_hint: "Extract nested logic into separate functions.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JS-QUAL-008: Callback Hell
+// Severity: medium
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JsCallbackHell;
+
+impl LangRule for JsCallbackHell {
+    fn id(&self) -> &str { "JS-QUAL-008" }
+    fn name(&self) -> &str { "Callback Hell (Nested Callbacks > 3)" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let re = Regex::new(r"\.then\(|\.catch\(|\.finally\(").unwrap();
+        let cb_count: Vec<(usize, usize)> = re.find_iter(code)
+            .map(|m| {
+                let line = code[..m.start()].matches('\n').count() + 1;
+                (line, m.start())
+            })
+            .collect();
+
+        for i in 0..cb_count.len().saturating_sub(2) {
+            if cb_count[i+1].0 == cb_count[i].0 && cb_count[i+1].1 > cb_count[i].1 {
+                let nesting = cb_count.iter()
+                    .filter(|(l, _)| *l == cb_count[i].0)
+                    .count();
+                if nesting > 3 {
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line: cb_count[i].0,
+                        column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        snippet: "Multiple chained promise callbacks on same line.".to_string(),
+                        problem: format!("Callback nesting depth {}. Consider using async/await.", nesting),
+                        fix_hint: "Refactor to async/await for better readability.".to_string(),
+                        auto_fix_available: false,
+                    });
+                    break;
+                }
+            }
+        }
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JS-QUAL-009: Magic Numbers
+// Severity: info | CWE-184
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JsMagicNumbers;
+
+impl LangRule for JsMagicNumbers {
+    fn id(&self) -> &str { "JS-QUAL-009" }
+    fn name(&self) -> &str { "Magic Numbers in Code" }
+    fn severity(&self) -> &'static str { "info" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let pattern = r"(?<![.\w])(\d{3,})(?![.\d])";
+        if let Ok(re) = Regex::new(pattern) {
+            for m in re.find_iter(code) {
+                let line = code[..m.start()].matches('\n').count() + 1;
+                let line_text = get_line_text(code, line).unwrap_or_default();
+                if !line_text.trim().starts_with("//") && !line_text.trim().starts_with("/*") {
+                    let (start, end) = get_line_offsets(code, line);
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!("Magic number '{}'. Use a named constant instead.", m.as_str()),
+                        fix_hint: "Define as const: const MAX_RETRIES = 500;".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JS-QUAL-010: Missing Promise Catch Handler
+// Severity: medium
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JsMissingPromiseCatch;
+
+impl LangRule for JsMissingPromiseCatch {
+    fn id(&self) -> &str { "JS-QUAL-010" }
+    fn name(&self) -> &str { "Missing Promise catch Handler" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let then_re = Regex::new(r"\.then\(").unwrap();
+        let catch_re = Regex::new(r"\.catch\(").unwrap();
+        let catch_lines: std::collections::HashSet<usize> = catch_re
+            .find_iter(code)
+            .map(|m| code[..m.start()].matches('\n').count() + 1)
+            .collect();
+
+        for m in then_re.find_iter(code) {
+            let line = code[..m.start()].matches('\n').count() + 1;
+            let after = &code[m.end()..];
+            let next_50 = &after[..after.len().min(200)];
+            if !catch_re.is_match(next_50) && !catch_lines.contains(&line) {
+                let (start, end) = get_line_offsets(code, line);
+                let line_text = get_line_text(code, line).unwrap_or_default();
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: self.severity().to_string(),
+                    line,
+                    column: 0,
+                    start_byte: start,
+                    end_byte: end,
+                    snippet: line_text.trim().to_string(),
+                    problem: "Promise chain without .catch() handler. Unhandled rejections may cause silent failures.".to_string(),
+                    fix_hint: "Add .catch() or use try/catch with async/await.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JS-QUAL-011: Global Variables
+// Severity: low
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JsGlobalVariables;
+
+impl LangRule for JsGlobalVariables {
+    fn id(&self) -> &str { "JS-QUAL-011" }
+    fn name(&self) -> &str { "Global Variable Usage" }
+    fn severity(&self) -> &'static str { "low" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let re = Regex::new(r"(?m)^\s*(var|let)\s+(\w+)\s*=").unwrap();
+        for m in re.captures_iter(code) {
+            let var = m.get(2).map(|x| x.as_str()).unwrap_or("");
+            if var.len() > 2 && !var.starts_with('_') {
+                let line = code[..m.get(0).map(|x| x.start()).unwrap()].matches('\n').count() + 1;
+                let (start, end) = get_line_offsets(code, line);
+                let line_text = get_line_text(code, line).unwrap_or_default();
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: self.severity().to_string(),
+                    line,
+                    column: 0,
+                    start_byte: start,
+                    end_byte: end,
+                    snippet: line_text.trim().to_string(),
+                    problem: format!("Variable '{}' is declared globally without being in a module.", var),
+                    fix_hint: "Use 'const' or 'let' inside a module scope.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JS-QUAL-012: Empty Catch Block
+// Severity: low
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JsEmptyCatchBlock;
+
+impl LangRule for JsEmptyCatchBlock {
+    fn id(&self) -> &str { "JS-QUAL-012" }
+    fn name(&self) -> &str { "Empty Catch Block" }
+    fn severity(&self) -> &'static str { "low" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let re = Regex::new(r"(?m)^\s*}?\s*catch\s*\([^)]+\)\s*\{\s*\}").unwrap();
+        for m in re.find_iter(code) {
+            let line = code[..m.start()].matches('\n').count() + 1;
+            let (start, end) = get_line_offsets(code, line);
+            let line_text = get_line_text(code, line).unwrap_or_default();
+            findings.push(LangFinding {
+                rule_id: self.id().to_string(),
+                severity: self.severity().to_string(),
+                line,
+                column: 0,
+                start_byte: start,
+                end_byte: end,
+                snippet: line_text.trim().to_string(),
+                problem: "Empty catch block detected.".to_string(),
+                fix_hint: "Add error handling or logging.".to_string(),
+                auto_fix_available: false,
+            });
+        }
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JS-QUAL-013: console.log/debugger in production
+// Severity: low
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JsConsoleLogProduction;
+
+impl LangRule for JsConsoleLogProduction {
+    fn id(&self) -> &str { "JS-QUAL-013" }
+    fn name(&self) -> &str { "Console/Debugger in Code" }
+    fn severity(&self) -> &'static str { "low" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let patterns = [
+            (r"console\.(log|debug|info|warn|error)\s*\(", "console.log/debug usage"),
+            (r"\bdebugger\b", "debugger statement"),
+        ];
+        for (pat, desc) in &patterns {
+            if let Ok(re) = Regex::new(pat) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!("{} found in code.", desc),
+                        fix_hint: "Remove debug statements or use a logging library with levels.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JS-QUAL-014: TODO/FIXME Comments
+// Severity: info | CWE-546
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JsTodoCommentsQuality;
+
+impl LangRule for JsTodoCommentsQuality {
+    fn id(&self) -> &str { "JS-QUAL-014" }
+    fn name(&self) -> &str { "TODO / FIXME Comments" }
+    fn severity(&self) -> &'static str { "info" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let patterns = [
+            (r"(?i)TODO", "TODO marker"),
+            (r"(?i)FIXME", "FIXME marker"),
+            (r"(?i)HACK", "HACK marker"),
+        ];
+        for (pat, label) in &patterns {
+            if let Ok(re) = Regex::new(pat) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!("{} found.", label),
+                        fix_hint: "Resolve or add tracking issue.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Registry function
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -561,5 +912,13 @@ pub fn js_quality_rules() -> Vec<Box<dyn LangRule>> {
         Box::new(JsMutatingGlobalState),
         Box::new(JsComplexCondition),
         Box::new(JsDuplicateImport),
+        Box::new(JsDeepNestingQuality),
+        Box::new(JsCallbackHell),
+        Box::new(JsMagicNumbers),
+        Box::new(JsMissingPromiseCatch),
+        Box::new(JsGlobalVariables),
+        Box::new(JsEmptyCatchBlock),
+        Box::new(JsConsoleLogProduction),
+        Box::new(JsTodoCommentsQuality),
     ]
 }

@@ -15,91 +15,96 @@
 //! You should have received a copy of the GNU Affero General Public License
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-#![allow(dead_code)]
-
 use crate::rules::base::{extract_snippet, Fix, Finding, Rule, Severity};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use tree_sitter::Tree;
+
+static IMPORT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"^import\s+(\w+)"#).unwrap());
+static FROM_IMPORT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"^from\s+(\w+)\s+import"#).unwrap());
+static IMPORT_ORDER_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^(from\s+\S+|import\s+\S+)").unwrap());
+
+static DEBUG_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r"print\s*\(", "print() statement"),
+    (r"pdb\.set_trace\s*\(", "pdb.set_trace()"),
+    (r"breakpoint\s*\(", "breakpoint()"),
+    (r"import\s+pdb", "pdb import"),
+    (r"import\s+debugpy", "debugpy import"),
+]);
+
+static REDUNDANT_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r"\w+\s*==\s*True", "== True comparison"),
+    (r"\w+\s*is\s*True", "is True comparison"),
+    (r"\w+\s*!=\s*False", "!= False comparison"),
+    (r"\w+\s*is\s*False", "is False comparison"),
+    (r"str\s*\(\s*str\s*\(", "str(str())"),
+]);
+
+static NAMING_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r#"(?m)^class\s+[a-z]"#, "Class name should use PascalCase"),
+    (r#"(?m)^def\s+[A-Z]"#, "Function name should use snake_case"),
+    (r#"(?m)^[A-Z][A-Z0-9_]*\s*="#, "Variable name should use snake_case"),
+]);
+
+static DEAD_CODE_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r"(?m)^\s*#.*$", "Empty or commented lines"),
+    (r"(?m)^def\s+\w+\s*\([^)]*\)\s*:\s*(?:#.*)?$", "Function definition with only pass/return"),
+    (r"(?m)^\s*pass\s*$", "Standalone pass statement"),
+    (r"(?m)^\s*\.\.\.\s*$", "Ellipsis statement"),
+]);
+
+static COMMENT_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r"(?m)^\s*###+\s*$", "Empty hash comment separator"),
+    (r"(?m)^\s*---+\s*$", "Empty dash comment separator"),
+    (r"(?m)^\s*#\s*$", "Empty comment"),
+    (r"(?i)^\s*#\s*TODO\s*:?\s*$", "TODO without description"),
+    (r"(?i)^\s*#\s*FIXME\s*:?\s*$", "FIXME without description"),
+    (r"(?i)^\s*#\s*HACK\s*:?\s*$", "HACK without description"),
+]);
 
 /// Unused Import Rule
 pub struct UnusedImportRule;
 
 impl Rule for UnusedImportRule {
-    fn id(&self) -> &str {
-        "QUAL-001"
-    }
-
-    fn name(&self) -> &str {
-        "Unused Import"
-    }
-
-    fn severity(&self) -> Severity {
-        Severity::Info
-    }
+    fn id(&self) -> &str { "QUAL-001" }
+    fn name(&self) -> &str { "Unused Import" }
+    fn severity(&self) -> Severity { Severity::Info }
 
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let findings = Vec::new();
-
-        // Simple heuristic: find imports and check if they appear later in code
-        let import_re = regex::Regex::new(r#"^import\s+(\w+)"#).unwrap();
-        let from_import_re = regex::Regex::new(r#"^from\s+(\w+)\s+import"#).unwrap();
-
         for line in code.lines() {
-            if let Some(caps) = import_re.captures(line) {
+            if let Some(caps) = IMPORT_RE.captures(line) {
                 let module = caps.get(1).map(|m| m.as_str()).unwrap_or("");
                 if !code.contains(&format!("{}.", module))
                     && !code[code.find(line).unwrap_or(0)..].contains(module)
-                {
-                    // Check if this is truly unused (simplified)
-                }
+                {}
             }
-            if let Some(caps) = from_import_re.captures(line) {
+            if let Some(caps) = FROM_IMPORT_RE.captures(line) {
                 let module = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-                if !code.contains(&format!("{}.", module)) {
-                    // Check if this is truly unused (simplified)
-                }
+                if !code.contains(&format!("{}.", module)) {}
             }
         }
-
         findings
     }
 
-    fn fix(&self, _finding: &Finding, _code: &str) -> Option<Fix> {
-        None
-    }
+    fn fix(&self, _finding: &Finding, _code: &str) -> Option<Fix> { None }
 
-    fn enabled_by_default(&self) -> bool {
-        false // Not enabled by default
-    }
+    fn enabled_by_default(&self) -> bool { false }
 }
 
 /// Debug Code Rule
 pub struct DebugCodeRule;
 
 impl Rule for DebugCodeRule {
-    fn id(&self) -> &str {
-        "QUAL-002"
-    }
-
-    fn name(&self) -> &str {
-        "Debug Code"
-    }
-
-    fn severity(&self) -> Severity {
-        Severity::Info
-    }
+    fn id(&self) -> &str { "QUAL-002" }
+    fn name(&self) -> &str { "Debug Code" }
+    fn severity(&self) -> Severity { Severity::Info }
 
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r"print\s*\(", "print() statement"),
-            (r"pdb\.set_trace\s*\(", "pdb.set_trace()"),
-            (r"breakpoint\s*\(", "breakpoint()"),
-            (r"import\s+pdb", "pdb import"),
-            (r"import\s+debugpy", "debugpy import"),
-        ];
 
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in DEBUG_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {
@@ -139,39 +144,22 @@ impl Rule for DebugCodeRule {
         }
     }
 
-    fn supports_auto_fix(&self) -> bool {
-        true
-    }
+    fn supports_auto_fix(&self) -> bool { true }
 }
 
 /// Redundant Expression Rule
 pub struct RedundantExpressionRule;
 
 impl Rule for RedundantExpressionRule {
-    fn id(&self) -> &str {
-        "QUAL-003"
-    }
-
-    fn name(&self) -> &str {
-        "Redundant Expression"
-    }
-
-    fn severity(&self) -> Severity {
-        Severity::Medium
-    }
+    fn id(&self) -> &str { "QUAL-003" }
+    fn name(&self) -> &str { "Redundant Expression" }
+    fn severity(&self) -> Severity { Severity::Medium }
 
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r"\w+\s*==\s*True", "== True comparison"),
-            (r"\w+\s*is\s*True", "is True comparison"),
-            (r"\w+\s*!=\s*False", "!= False comparison"),
-            (r"\w+\s*is\s*False", "is False comparison"),
-            (r"str\s*\(\s*str\s*\(", "str(str())"),
-        ];
 
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in REDUNDANT_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {
@@ -197,7 +185,6 @@ impl Rule for RedundantExpressionRule {
 
     fn fix(&self, finding: &Finding, code: &str) -> Option<Fix> {
         let original = &code[finding.start..finding.end];
-
         let replacement = original
             .replace(" == True", "")
             .replace(" is True", "")
@@ -222,9 +209,7 @@ impl Rule for RedundantExpressionRule {
         }
     }
 
-    fn supports_auto_fix(&self) -> bool {
-        true
-    }
+    fn supports_auto_fix(&self) -> bool { true }
 }
 
 /// Naming Convention Rule (QUAL-004)
@@ -237,14 +222,9 @@ impl Rule for NamingConventionRule {
 
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r#"(?m)^class\s+[a-z]"#, "Class name should use PascalCase"),
-            (r#"(?m)^def\s+[A-Z]"#, "Function name should use snake_case"),
-            (r#"(?m)^[A-Z][A-Z0-9_]*\s*="#, "Variable name should use snake_case"),
-        ];
 
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in NAMING_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {
@@ -278,15 +258,9 @@ impl Rule for DeadCodeRule {
 
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r"(?m)^\s*#.*$", "Empty or commented lines"),
-            (r"(?m)^def\s+\w+\s*\([^)]*\)\s*:\s*(?:#.*)?$", "Function definition with only pass/return"),
-            (r"(?m)^\s*pass\s*$", "Standalone pass statement"),
-            (r"(?m)^\s*\.\.\.\s*$", "Ellipsis statement"),
-        ];
 
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in DEAD_CODE_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {
@@ -336,24 +310,21 @@ impl Rule for ImportOrderRule {
 
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let import_pattern = regex::Regex::new(r"(?m)^(from\s+\S+|import\s+\S+)").unwrap();
-
         let mut prev_import = String::new();
         let mut prev_order = 0;
 
-        for cap in import_pattern.captures_iter(code) {
+        for cap in IMPORT_ORDER_RE.captures_iter(code) {
             let m = cap.get(0).unwrap();
             let import_line = m.as_str();
 
             let current_order = if import_line.contains(".") {
-                3 // Local imports
+                3
             } else if import_line.contains("from ") && !import_line.contains("<") {
-                2 // Third-party
+                2
             } else {
-                1 // Standard library
+                1
             };
 
-            // Check if order is violated
             if !prev_import.is_empty() && current_order < prev_order {
                 findings.push(Finding {
                     rule_id: "QUAL-006".to_string(),
@@ -391,17 +362,9 @@ impl Rule for CommentQualityRule {
 
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r"(?m)^\s*###+\s*$", "Empty hash comment separator"),
-            (r"(?m)^\s*---+\s*$", "Empty dash comment separator"),
-            (r"(?m)^\s*#\s*$", "Empty comment"),
-            (r"(?i)^\s*#\s*TODO\s*:?\s*$", "TODO without description"),
-            (r"(?i)^\s*#\s*FIXME\s*:?\s*$", "FIXME without description"),
-            (r"(?i)^\s*#\s*HACK\s*:?\s*$", "HACK without description"),
-        ];
 
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in COMMENT_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {

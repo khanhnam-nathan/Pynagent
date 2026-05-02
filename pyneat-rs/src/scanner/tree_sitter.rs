@@ -15,7 +15,6 @@
 //! You should have received a copy of the GNU Affero General Public License
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-#![allow(dead_code)]
 
 use tree_sitter::{Parser, Tree};
 
@@ -129,6 +128,31 @@ where
             }
         }
     }
+}
+
+/// Get the child nodes of a tree-sitter node.
+pub fn get_call_children<'a>(node: &'a tree_sitter::Node, code: &'a str) -> Vec<NodeInfo<'a>> {
+    let mut children = Vec::new();
+    let mut child_cursor = node.walk();
+    if child_cursor.goto_first_child() {
+        loop {
+            let child = child_cursor.node();
+            if child.kind() != "" && child.kind() != "(" && child.kind() != ")" {
+                children.push(NodeInfo {
+                    node_type: child.kind().to_string(),
+                    start_byte: child.start_byte(),
+                    end_byte: child.end_byte(),
+                    start_point: child.start_position(),
+                    end_point: child.end_position(),
+                    code,
+                });
+            }
+            if !child_cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    children
 }
 
 #[cfg(test)]

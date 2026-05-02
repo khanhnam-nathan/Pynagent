@@ -16,6 +16,11 @@
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::rules::base::{extract_snippet, Fix, Finding, Rule, Severity};
+use crate::rules::extended_security::{
+    SqlInjectionSinkRule, XssSinkRule, LfiSinkRule, CsrfSinkRule,
+    SsrfSinkRule, OpenRedirectSinkRule,
+};
+use once_cell::sync::Lazy;
 use tree_sitter::Tree;
 
 /// SEC-001: Command Injection Detection
@@ -36,30 +41,82 @@ impl Rule for CommandInjectionRule {
 
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r"os\.system\s*\(", "os.system()"),
-            (r"subprocess\.run\s*\([^)]*shell\s*=\s*True", "subprocess.run with shell=True"),
-            (r"os\.popen\s*\(", "os.popen()"),
-        ];
 
-        for (pattern, _) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
-                for m in re.find_iter(code) {
-                    let snippet = extract_snippet(code, m.start(), m.end());
+        // Pattern 1: os.system with string concatenation or variable argument
+        // Matches: os.system("cmd " + var), os.system(cmd + args), os.system(user_input)
+        // Does NOT match: os.system("echo hello"), os.system("ls -la")
+        if let Ok(re) = regex::Regex::new(r"os\.system\s*\(\s*([^)]+)\s*\)") {
+            for m in re.captures_iter(code) {
+                let full_match = m.get(0).unwrap();
+                let arg = m.get(1).map(|g| g.as_str()).unwrap_or("");
+
+                // Heuristic: only flag if argument contains string concatenation (+)
+                // or is a bare identifier (variable reference) rather than a string literal
+                let has_concat = arg.contains('+');
+                let is_bare_var = !arg.starts_with('"') && !arg.starts_with('\'')
+                    && !arg.starts_with("f\"") && !arg.starts_with("f'")
+                    && !arg.is_empty();
+
+                if has_concat || is_bare_var {
+                    let snippet = extract_snippet(code, full_match.start(), full_match.end());
                     findings.push(Finding {
                         rule_id: "SEC-001".to_string(),
                         severity: Severity::Critical.as_str().to_string(),
                         cwe_id: Some("CWE-78".to_string()),
                         cvss_score: Some(9.8),
                         owasp_id: Some("A03:2021".to_string()),
-                        start: m.start(),
-                        end: m.end(),
+                        start: full_match.start(),
+                        end: full_match.end(),
                         snippet,
-                        problem: "User input is passed directly to a shell command. This can allow command injection attacks.".to_string(),
+                        problem: if is_bare_var && !has_concat {
+                            "User-controlled argument passed to os.system(). This can allow command injection attacks.".to_string()
+                        } else {
+                            "User input is passed directly to a shell command through string concatenation. This can allow command injection attacks.".to_string()
+                        },
                         fix_hint: "Use subprocess.run with shell=False and pass command as a list of arguments instead of a string.".to_string(),
                         auto_fix_available: false,
                     });
                 }
+            }
+        }
+
+        // Pattern 2: subprocess.run with shell=True
+        if let Ok(re) = regex::Regex::new(r"subprocess\.run\s*\([^)]*shell\s*=\s*True") {
+            for m in re.find_iter(code) {
+                let snippet = extract_snippet(code, m.start(), m.end());
+                findings.push(Finding {
+                    rule_id: "SEC-001".to_string(),
+                    severity: Severity::Critical.as_str().to_string(),
+                    cwe_id: Some("CWE-78".to_string()),
+                    cvss_score: Some(9.8),
+                    owasp_id: Some("A03:2021".to_string()),
+                    start: m.start(),
+                    end: m.end(),
+                    snippet,
+                    problem: "subprocess.run with shell=True allows shell metacharacter injection. This can allow command injection attacks.".to_string(),
+                    fix_hint: "Use subprocess.run with shell=False and pass command as a list of arguments.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+
+        // Pattern 3: os.popen (always dangerous — no shell isolation)
+        if let Ok(re) = regex::Regex::new(r"os\.popen\s*\(") {
+            for m in re.find_iter(code) {
+                let snippet = extract_snippet(code, m.start(), m.end());
+                findings.push(Finding {
+                    rule_id: "SEC-001".to_string(),
+                    severity: Severity::Critical.as_str().to_string(),
+                    cwe_id: Some("CWE-78".to_string()),
+                    cvss_score: Some(9.8),
+                    owasp_id: Some("A03:2021".to_string()),
+                    start: m.start(),
+                    end: m.end(),
+                    snippet,
+                    problem: "os.popen() executes a command via shell — equivalent to shell=True with no argument sanitization.".to_string(),
+                    fix_hint: "Use subprocess.run([...], shell=False) or the subprocess module's higher-level functions.".to_string(),
+                    auto_fix_available: false,
+                });
             }
         }
 
@@ -108,8 +165,19 @@ impl Rule for SqlInjectionRule {
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
         let patterns = [
-            (r#"(cursor|db|connection)\.execute\s*\([^)]*\+"#, "SQL query with string concatenation"),
-            (r#"f['"].*SELECT.*\{[^}]+\}.*['"]"#, "SQL query with f-string interpolation"),
+            // Pattern 1: concat INSIDE execute() — catches cursor.execute("SELECT * FROM " + table)
+            (r#"(cursor|db|connection)\.execute\s*\([^)]*\+"#, "SQL query with string concatenation inside execute()"),
+            // Pattern 2: query variable assigned with concat, then passed to execute()
+            // Common Python pattern — no semicolons needed:
+            //   query = "SELECT * FROM users WHERE username = '" + username + "'"
+            //   cursor.execute(query)
+            (r#"(?s)(query|sql|statement|cmd)\s*=\s*\"[^\"]*(?:SELECT|INSERT|UPDATE|DELETE|DROP|UNION|ALTER|CREATE)[^\"]*\"[^\n]*\+\s*\w+.*?(?:execute|exec|query)\s*\("#, "SQL query variable built with concatenation then passed to execute()"),
+            // Pattern 3: double-quoted SQL string ending with ' + ' — direct concat
+            (r#"query\s*=\s*\"[^\"]*(?:SELECT|INSERT|UPDATE|DELETE|DROP)[^\"]*\"[^\n]*\+\s*\w+"#, "SQL query string concatenated with variable — injection risk"),
+            // Pattern 4: f-string with SQL keyword — f'SELECT * FROM {user_input}'
+            (r#"f['\"].*?(?:SELECT|INSERT|UPDATE|DELETE|DROP|UNION|ALTER)[^'\"]*\{[^}]+\}[^'\"]*['\"]"#, "SQL query with f-string interpolation — parameterizable"),
+            // Pattern 5: .format() in SQL string
+            (r#"['\"].*?(?:SELECT|INSERT|UPDATE|DELETE)[^'\"]*\.\s*format\s*\([^)]+\)"#, "SQL query using .format() interpolation"),
         ];
 
         for (pattern, _) in &patterns {
@@ -137,8 +205,30 @@ impl Rule for SqlInjectionRule {
         findings
     }
 
-    fn fix(&self, _finding: &Finding, _code: &str) -> Option<Fix> {
-        None
+    fn fix(&self, finding: &Finding, code: &str) -> Option<Fix> {
+        let original = &code[finding.start..finding.end];
+        let replacement = original
+            .replace("cursor.execute(f\"", "cursor.execute(\"")
+            .replace("execute(query %", "execute(query, ")
+            .replace("execute(query % (", "execute(query, (")
+            .replace("execute(query.format", "execute(query, params")
+            .replace("cursor.execute(sql.format", "cursor.execute(sql, params");
+        if replacement != original {
+            Some(Fix {
+                rule_id: self.id().to_string(),
+                description: "Use parameterized queries instead of string formatting".to_string(),
+                original: original.to_string(),
+                replacement,
+                start: finding.start,
+                end: finding.end,
+            })
+        } else {
+            None
+        }
+    }
+
+    fn supports_auto_fix(&self) -> bool {
+        true
     }
 }
 
@@ -156,6 +246,10 @@ impl Rule for EvalExecRule {
 
     fn severity(&self) -> Severity {
         Severity::Critical
+    }
+
+    fn supported_languages(&self) -> Option<&'static [&'static str]> {
+        Some(&["python"])
     }
 
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
@@ -190,8 +284,24 @@ impl Rule for EvalExecRule {
         findings
     }
 
-    fn fix(&self, _finding: &Finding, _code: &str) -> Option<Fix> {
+    fn fix(&self, finding: &Finding, code: &str) -> Option<Fix> {
+        let original = &code[finding.start..finding.end];
+        if original.contains("eval(") && !original.contains("ast.literal_eval") {
+            let replacement = original.replace("eval(", "ast.literal_eval(");
+            return Some(Fix {
+                rule_id: self.id().to_string(),
+                description: "Replace eval() with ast.literal_eval() for safe evaluation".to_string(),
+                original: original.to_string(),
+                replacement,
+                start: finding.start,
+                end: finding.end,
+            });
+        }
         None
+    }
+
+    fn supports_auto_fix(&self) -> bool {
+        true
     }
 }
 
@@ -440,9 +550,32 @@ impl Rule for HardcodedSecretsRule {
         findings
     }
 
-    fn fix(&self, _finding: &Finding, _code: &str) -> Option<Fix> {
+    fn fix(&self, finding: &Finding, code: &str) -> Option<Fix> {
+        let original = &code[finding.start..finding.end];
+        let replacement = original
+            .trim_end_matches('"')
+            .trim_end_matches('\'')
+            .trim_end_matches(' ')
+            .trim_end_matches('\t');
+        if replacement.contains('=') {
+            let parts: Vec<&str> = replacement.splitn(2, '=').collect();
+            if parts.len() == 2 {
+                let var_name = parts[0].trim().to_string();
+                let hint = format!("{} = os.environ.get('{}') or ''  # TODO: set via env var", var_name, var_name.to_uppercase());
+                return Some(Fix {
+                    rule_id: self.id().to_string(),
+                    description: "Replace hardcoded secret with environment variable".to_string(),
+                    original: original.to_string(),
+                    replacement: hint,
+                    start: finding.start,
+                    end: finding.end,
+                });
+            }
+        }
         None
     }
+
+    fn supports_auto_fix(&self) -> bool { true }
 }
 
 /// SEC-011: Weak Cryptography Detection
@@ -459,6 +592,10 @@ impl Rule for WeakCryptoRule {
 
     fn severity(&self) -> Severity {
         Severity::High
+    }
+
+    fn supported_languages(&self) -> Option<&'static [&'static str]> {
+        Some(&["python"])
     }
 
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
@@ -1099,10 +1236,14 @@ impl Rule for OpenRedirectRule {
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
         let patterns = [
-            (r#"redirect\s*\([^)]*(?:next|redirect|return|url|path)"#, "Redirect with URL parameter"),
+            // Only flag redirect with actual user input sources (request.*, args.get, form.get, etc.)
+            (r#"redirect\s*\([^)]*(?:request\.(?:args|form|values|json|data)|\$\{|args\.get|form\.get)"#, "Redirect with user-controlled input"),
+            // Header-based redirect with user input
             (r#"Location\s*:\s*.*request\."#, "HTTP Location header with user input"),
+            // File path with user input
             (r#"send_file\s*\([^)]*request\."#, "send_file with user-controlled path"),
-            (r#"\.url_for\s*\([^)]*\)", "Flask url_for usage"),
+            // url_for is safe — does NOT take user input directly
+            // (.url_for usage is safe, we removed the overly-broad pattern)
         ];
 
         for (pattern, desc) in &patterns {
@@ -1876,9 +2017,7 @@ impl Rule for DeprecatedFunctionRule {
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
         let patterns = [
-            (r#"hashlib\.(md5|sha1)\s*\("#, "Deprecated hash function (MD5/SHA1)"),
             (r#"ssl\.wrap_socket\s*\("#, "Deprecated ssl.wrap_socket()"),
-            (r#"hashlib\.new\s*\(['\"]md5['\"]"#, "hashlib.new with MD5"),
             (r#"xml\.dom\.minidom\.parse"#, "xml.dom.minidom (XXE risk)"),
             (r#"Crypto\.Cipher"#, "PyCrypto (deprecated, use cryptography)"),
         ];
@@ -2285,6 +2424,239 @@ impl Rule for BusinessLogicRule {
 }
 
 // ============================================================================
+// NEW SECURITY RULES (SEC-113 to SEC-117)
+// ============================================================================
+
+// SEC-113: NoSQL / MongoDB Injection (CRITICAL)
+static NOSQL_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r#"\$\s*where\s*[=:]\s*[^}]*(?:request|input|param|user|args|body)"#,
+     "NoSQL injection: $where clause with user input — potential code injection"),
+    (r#"db\[\s*[^]]+\]\.find\s*\([^)]*\+[^)]*(?:request|input|param|user)"#,
+     "NoSQL injection: MongoDB find() with string concatenation"),
+    (r#"collection\.find_one\s*\([^)]*\+[^)]*(?:request|input|param|user)"#,
+     "NoSQL injection: find_one with string concatenation"),
+    (r#"db\.collection\.(?:find|find_one|insert_one|update_one)\s*\([^)]*(?:request|input|param|user|body)"#,
+     "NoSQL operation with user-controlled data"),
+]);
+
+pub struct NoSqlInjectionRule;
+
+impl Rule for NoSqlInjectionRule {
+    fn id(&self) -> &str { "SEC-113" }
+    fn name(&self) -> &str { "NoSQL / MongoDB Injection" }
+    fn severity(&self) -> Severity { Severity::Critical }
+
+    fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for (pattern, desc) in NOSQL_PATTERNS.iter() {
+            if let Ok(re) = regex::Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let snippet = extract_snippet(code, m.start(), m.end());
+                    findings.push(Finding {
+                        rule_id: "SEC-113".to_string(),
+                        severity: Severity::Critical.as_str().to_string(),
+                        cwe_id: Some("CWE-943".to_string()),
+                        cvss_score: Some(9.8),
+                        owasp_id: Some("A03:2021".to_string()),
+                        start: m.start(), end: m.end(), snippet,
+                        problem: format!("NoSQL injection vulnerability: {}", desc),
+                        fix_hint: "Use MongoDB $eq operator or parameterized queries. Never include user input directly in NoSQL queries.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings.sort_by_key(|f| f.start);
+        findings
+    }
+
+    fn fix(&self, _finding: &Finding, _code: &str) -> Option<Fix> { None }
+}
+
+// SEC-114: JWT Algorithm Confusion (CRITICAL)
+static JWT_ALG_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r#"jwt\.decode\s*\([^)]*algorithms\s*=\s*\[[^\]]+\][^)]*\)"#,
+     "JWT decode with multiple/flexible algorithms — algorithm confusion risk (alg:none / key confusion)"),
+    (r#"algorithms\s*=\s*\[\s*['\"]RS256['\"],\s*['\"]HS256['\"]\s*\]"#,
+     "JWT with both RS256 and HS256 algorithms — public RSA key can be used as HMAC secret"),
+    (r#"algorithms\s*[=:]\s*\[\s*['\"]?none['\"]?\s*\]"#,
+     "JWT with 'none' algorithm — signature is not verified, token can be forged"),
+]);
+
+pub struct JwtAlgorithmConfusionRule;
+
+impl Rule for JwtAlgorithmConfusionRule {
+    fn id(&self) -> &str { "SEC-114" }
+    fn name(&self) -> &str { "JWT Algorithm Confusion Attack" }
+    fn severity(&self) -> Severity { Severity::Critical }
+
+    fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for (pattern, desc) in JWT_ALG_PATTERNS.iter() {
+            if let Ok(re) = regex::Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let snippet = extract_snippet(code, m.start(), m.end());
+                    findings.push(Finding {
+                        rule_id: "SEC-114".to_string(),
+                        severity: Severity::Critical.as_str().to_string(),
+                        cwe_id: Some("CWE-347".to_string()),
+                        cvss_score: Some(9.1),
+                        owasp_id: Some("A02:2021".to_string()),
+                        start: m.start(), end: m.end(), snippet,
+                        problem: format!("JWT algorithm confusion: {}", desc),
+                        fix_hint: "Use a hardcoded algorithm (e.g., HS256). Never allow the client to specify the algorithm. Validate the algorithm matches your expectation.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings.sort_by_key(|f| f.start);
+        findings
+    }
+
+    fn fix(&self, _finding: &Finding, _code: &str) -> Option<Fix> { None }
+}
+
+// SEC-115: OAuth CSRF — Missing State Validation (HIGH)
+static OAUTH_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r#"(?:oauth_|/oauth/)(?:callback|auth)"#,
+     "OAuth callback endpoint detected"),
+    (r#"(?:request\.args|request\.values|request\.args\.get)\s*\(\s*['\"]code['\"]"#,
+     "OAuth code received without evident state parameter validation"),
+]);
+
+pub struct OAuthMissingStateRule;
+
+impl Rule for OAuthMissingStateRule {
+    fn id(&self) -> &str { "SEC-115" }
+    fn name(&self) -> &str { "OAuth CSRF — Missing State Parameter Validation" }
+    fn severity(&self) -> Severity { Severity::High }
+
+    fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for (pattern, desc) in OAUTH_PATTERNS.iter() {
+            if let Ok(re) = regex::Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let snippet = extract_snippet(code, m.start(), m.end());
+                    findings.push(Finding {
+                        rule_id: "SEC-115".to_string(),
+                        severity: Severity::High.as_str().to_string(),
+                        cwe_id: Some("CWE-352".to_string()),
+                        cvss_score: Some(7.1),
+                        owasp_id: Some("A01:2021".to_string()),
+                        start: m.start(), end: m.end(), snippet,
+                        problem: format!("OAuth CSRF vulnerability: {}", desc),
+                        fix_hint: "Generate a cryptographically random state parameter in the authorization request and validate it on callback to prevent CSRF attacks.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings.sort_by_key(|f| f.start);
+        findings
+    }
+
+    fn fix(&self, _finding: &Finding, _code: &str) -> Option<Fix> { None }
+}
+
+// SEC-116: Dynamic Import — Code Injection (CRITICAL)
+static DYNAMIC_IMPORT_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r#"__import__\s*\([^)]*(?:request|input|param|user|args|body)"#,
+     "Dynamic __import__ with user-controlled module name — code execution risk"),
+    (r#"importlib\.import_module\s*\([^)]*(?:request|input|param|user|args|body)"#,
+     "importlib.import_module with user input — arbitrary code execution risk"),
+    (r#"getattr\s*\(\s*sys\.modules\s*,\s*[^)]*(?:request|input|param|user)"#,
+     "getattr on sys.modules with user input — module attribute injection"),
+    (r#"importlib\.import_module\s*\(\s*\w+\s*\)(?!\s*#)"#,
+     "Dynamic import without hardcoded module — verify module name is not user-controlled"),
+]);
+
+pub struct DynamicImportInjectionRule;
+
+impl Rule for DynamicImportInjectionRule {
+    fn id(&self) -> &str { "SEC-116" }
+    fn name(&self) -> &str { "Dynamic Import — Code Injection via User-Controlled Module Name" }
+    fn severity(&self) -> Severity { Severity::Critical }
+
+    fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for (pattern, desc) in DYNAMIC_IMPORT_PATTERNS.iter() {
+            if let Ok(re) = regex::Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let snippet = extract_snippet(code, m.start(), m.end());
+                    findings.push(Finding {
+                        rule_id: "SEC-116".to_string(),
+                        severity: Severity::Critical.as_str().to_string(),
+                        cwe_id: Some("CWE-94".to_string()),
+                        cvss_score: Some(9.8),
+                        owasp_id: Some("A03:2021".to_string()),
+                        start: m.start(), end: m.end(), snippet,
+                        problem: format!("Dynamic import injection: {}", desc),
+                        fix_hint: "Never use user input to import modules dynamically. Use a whitelist of allowed modules and validate the module name against that list.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings.sort_by_key(|f| f.start);
+        findings
+    }
+
+    fn fix(&self, _finding: &Finding, _code: &str) -> Option<Fix> { None }
+}
+
+// SEC-117: SSRF Advanced — Cloud Metadata + Dangerous URL Protocols (HIGH)
+static SSRF_ADVANCED_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r#"169\.254\.169\.254"#, "AWS metadata endpoint (169.254.169.254) — SSRF risk gives cloud credentials"),
+    (r#"metadata\.google\.internal"#, "GCP metadata endpoint — SSRF risk gives cloud credentials"),
+    (r#"metadata\.azure\.com"#, "Azure metadata endpoint — SSRF risk gives cloud credentials"),
+    (r#"kubernetes\.docker\.internal"#, "Kubernetes internal metadata — SSRF risk"),
+    (r#"(?:requests|urllib)\.(?:get|post|put|delete|head)\s*\([^)]*['\"]?file://"#, "URL with file:// scheme — local file access via SSRF"),
+    (r#"(?:requests|urllib)\.(?:get|post|put|delete|head)\s*\([^)]*['\"]?gopher://"#, "URL with gopher:// scheme — SSRF to internal services"),
+    (r#"(?:requests|urllib)\.(?:get|post|put|delete|head)\s*\([^)]*['\"]?dict://"#, "URL with dict:// scheme — SSRF to memcached/redis"),
+    (r#"(?:requests|urllib)\.(?:get|post|put|delete|head)\s*\([^)]*['\"]?ldap://"#, "URL with ldap:// scheme — SSRF to internal directory services"),
+    (r#"http://10\.\d+\.\d+\.\d+"#, "HTTP request to private IP range (10.x) — SSRF risk"),
+    (r#"http://172\.(?:1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+"#, "HTTP request to private IP range (172.16-31.x) — SSRF risk"),
+    (r#"http://192\.168\.\d+\.\d+"#, "HTTP request to private IP range (192.168.x) — SSRF risk"),
+    (r#"http://127\.\d+\.\d+\.\d+"#, "HTTP request to localhost — SSRF risk"),
+    (r#"http://0\.0\.0\.0"#, "HTTP request to 0.0.0.0 — SSRF risk"),
+]);
+
+pub struct SsrfAdvancedRule;
+
+impl Rule for SsrfAdvancedRule {
+    fn id(&self) -> &str { "SEC-117" }
+    fn name(&self) -> &str { "SSRF Advanced — Cloud Metadata + Dangerous URL Protocols" }
+    fn severity(&self) -> Severity { Severity::High }
+
+    fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for (pattern, desc) in SSRF_ADVANCED_PATTERNS.iter() {
+            if let Ok(re) = regex::Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let snippet = extract_snippet(code, m.start(), m.end());
+                    findings.push(Finding {
+                        rule_id: "SEC-117".to_string(),
+                        severity: Severity::High.as_str().to_string(),
+                        cwe_id: Some("CWE-918".to_string()),
+                        cvss_score: Some(8.6),
+                        owasp_id: Some("A10:2021".to_string()),
+                        start: m.start(), end: m.end(), snippet,
+                        problem: format!("Advanced SSRF: {}", desc),
+                        fix_hint: "Validate and whitelist URLs. Block access to cloud metadata endpoints, private IP ranges, and dangerous URL schemes (file://, gopher://, dict://, ldap://).".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings.sort_by_key(|f| f.start);
+        findings
+    }
+
+    fn fix(&self, _finding: &Finding, _code: &str) -> Option<Fix> { None }
+}
+
+// ============================================================================
 // RULE REGISTRY
 // ============================================================================
 
@@ -2312,11 +2684,14 @@ pub fn all_security_rules() -> Vec<Box<dyn Rule>> {
         Box::new(CommandInjectionRule),
         Box::new(SqlInjectionRule),
         Box::new(EvalExecRule),
-        Box::new(DeserializationRceRule),
+        // Note: DeserializationRceRule removed - SEC-004 is handled by InsecureDeserializationRule in extended_security.rs (SEC-087)
         Box::new(PathTraversalRule),
+        Box::new(NoSqlInjectionRule),
+        Box::new(JwtAlgorithmConfusionRule),
+        Box::new(DynamicImportInjectionRule),
         // High
         Box::new(HardcodedSecretsRule),
-        Box::new(WeakCryptoRule),
+        // Note: WeakCryptoRule removed - SEC-011 is handled by WeakHashRule in extended_security.rs (SEC-076)
         Box::new(InsecureSslRule),
         Box::new(XxeRule),
         Box::new(YamlUnsafeRule),
@@ -2325,6 +2700,8 @@ pub fn all_security_rules() -> Vec<Box<dyn Rule>> {
         Box::new(CorsWildcardRule),
         Box::new(JwtNoneRule),
         Box::new(WeakRandomRule),
+        Box::new(OAuthMissingStateRule),
+        Box::new(SsrfAdvancedRule),
         // Medium
         Box::new(LdapInjectionRule),
         Box::new(XssRule),
@@ -2341,6 +2718,7 @@ pub fn all_security_rules() -> Vec<Box<dyn Rule>> {
         Box::new(XContentTypeOptionsRule),
         Box::new(XFrameOptionsRule),
         Box::new(CspMissingRule),
+        // Note: DeserializationRceRule removed - SEC-004 is handled by InsecureDeserializationRule in extended_security.rs (SEC-087)
         // SEC-060 to SEC-072 (New rules)
         Box::new(AutocompleteEnabledRule),
         Box::new(MissingSriRule),
@@ -2399,6 +2777,8 @@ pub fn all_security_rules() -> Vec<Box<dyn Rule>> {
     ];
     // Add extended security rules (SEC-073 to SEC-105+)
     rules.extend(crate::rules::extended_security::all_extended_security_rules());
+    // Add hackingtool-inspired rules (SEC-118 to SEC-125)
+    rules.extend(crate::rules::hackingtool_patterns::all_hackingtool_rules());
     rules
 }
 
@@ -2412,7 +2792,8 @@ mod tests {
         let rule = CommandInjectionRule;
         let code = r#"
 import os
-os.system("ls -la")
+user_input = "ls -la"
+os.system(user_input)
 "#;
         let tree = parse(code).unwrap();
         let findings = rule.detect(&tree, code);
@@ -2473,5 +2854,257 @@ with open(user_filename) as f:
         let findings = rule.detect(&tree, code);
         assert!(!findings.is_empty());
         assert_eq!(findings[0].rule_id, "SEC-005");
+    }
+
+    // ========================================================================
+    // Phase 2: Vulnerable Sink Detection Tests (SEC-126 to SEC-131)
+    // These rules detect VULNERABLE CODE that hackingtool exploits target.
+    // ========================================================================
+
+    #[test]
+    fn test_sec126_sqli_fstring_sink() {
+        let rule = SqlInjectionSinkRule;
+        let code = r#"cursor.execute(f"SELECT * FROM users WHERE name={username}" % password)"#;
+        let tree = parse(code).unwrap();
+        let findings = rule.detect(&tree, code);
+        assert!(!findings.is_empty(), "f-string in cursor.execute should be detected");
+        assert_eq!(findings[0].rule_id, "SEC-126");
+    }
+
+    #[test]
+    fn test_sec126_sqli_percent_format_sink() {
+        let rule = SqlInjectionSinkRule;
+        let code = r#"cursor.execute("SELECT * FROM admin WHERE pass='%s'" % password)"#;
+        let tree = parse(code).unwrap();
+        let findings = rule.detect(&tree, code);
+        assert!(!findings.is_empty(), "%-formatting in SQL should be detected");
+        assert_eq!(findings[0].rule_id, "SEC-126");
+    }
+
+    #[test]
+    fn test_sec126_sqli_user_input_sink() {
+        let rule = SqlInjectionSinkRule;
+        let code = r#"db.execute("SELECT * FROM users WHERE id='%s'" % request.args['id'])"#;
+        let tree = parse(code).unwrap();
+        let findings = rule.detect(&tree, code);
+        assert!(!findings.is_empty(), "f-string with request input in SQL should be detected");
+        assert_eq!(findings[0].rule_id, "SEC-126");
+    }
+
+    #[test]
+    fn test_sec127_xss_render_template_string() {
+        let rule = XssSinkRule;
+        let code = r#"render_template_string(request.args.get('template', ''))"#;
+        let tree = parse(code).unwrap();
+        let findings = rule.detect(&tree, code);
+        assert!(!findings.is_empty(), "render_template_string with user input should be detected");
+        assert_eq!(findings[0].rule_id, "SEC-127");
+    }
+
+    #[test]
+    fn test_sec127_xss_mark_safe() {
+        let rule = XssSinkRule;
+        let code = r#"mark_safe(request.GET['content'])"#;
+        let tree = parse(code).unwrap();
+        let findings = rule.detect(&tree, code);
+        assert!(!findings.is_empty(), "mark_safe with user input should be detected");
+        assert_eq!(findings[0].rule_id, "SEC-127");
+    }
+
+    #[test]
+    fn test_sec127_xss_htmlresponse() {
+        let rule = XssSinkRule;
+        let code = r#"HTMLResponse(content=user_input)"#;
+        let tree = parse(code).unwrap();
+        let findings = rule.detect(&tree, code);
+        assert!(!findings.is_empty(), "HTMLResponse with user input should be detected");
+        assert_eq!(findings[0].rule_id, "SEC-127");
+    }
+
+    #[test]
+    fn test_sec128_lfi_open_user_path() {
+        let rule = LfiSinkRule;
+        let code = r#"with open(f"templates/{request.args.get('page')}.html") as f:"#;
+        let tree = parse(code).unwrap();
+        let findings = rule.detect(&tree, code);
+        assert!(!findings.is_empty(), "open() with user path should be detected");
+        assert_eq!(findings[0].rule_id, "SEC-128");
+    }
+
+    #[test]
+    fn test_sec128_lfi_send_from_directory() {
+        let rule = LfiSinkRule;
+        let code = r#"send_from_directory('static', request.args.get('file'))"#;
+        let tree = parse(code).unwrap();
+        let findings = rule.detect(&tree, code);
+        assert!(!findings.is_empty(), "send_from_directory with user input should be detected");
+        assert_eq!(findings[0].rule_id, "SEC-128");
+    }
+
+    #[test]
+    fn test_sec128_lfi_pathlib() {
+        let rule = LfiSinkRule;
+        let code = r#"Path(request.args['path'])"#;
+        let tree = parse(code).unwrap();
+        let findings = rule.detect(&tree, code);
+        assert!(!findings.is_empty(), "pathlib.Path with user input should be detected");
+        assert_eq!(findings[0].rule_id, "SEC-128");
+    }
+
+    #[test]
+    fn test_sec129_csrf_exempt() {
+        let rule = CsrfSinkRule;
+        let code = r#"@csrf_exempt
+@app.route('/transfer', methods=['POST'])
+def transfer():
+    amount = request.form['amount']"#;
+        let tree = parse(code).unwrap();
+        let findings = rule.detect(&tree, code);
+        assert!(!findings.is_empty(), "@csrf_exempt should be detected");
+        assert_eq!(findings[0].rule_id, "SEC-129");
+    }
+
+    #[test]
+    fn test_sec130_ssrf_requests_url() {
+        let rule = SsrfSinkRule;
+        let code = r#"requests.get(request.args.get('url'))"#;
+        let tree = parse(code).unwrap();
+        let findings = rule.detect(&tree, code);
+        assert!(!findings.is_empty(), "requests.get with user URL should be detected");
+        assert_eq!(findings[0].rule_id, "SEC-130");
+    }
+
+    #[test]
+    fn test_sec130_ssrf_aws_metadata() {
+        let rule = SsrfSinkRule;
+        let code = r#"requests.get('http://169.254.169.254/latest/meta-data/')"#;
+        let tree = parse(code).unwrap();
+        let findings = rule.detect(&tree, code);
+        assert!(!findings.is_empty(), "AWS metadata endpoint should be detected");
+        assert_eq!(findings[0].rule_id, "SEC-130");
+    }
+
+    #[test]
+    fn test_sec130_ssrf_urllib() {
+        let rule = SsrfSinkRule;
+        let code = r#"urllib.request.urlopen(request.args.get('target'))"#;
+        let tree = parse(code).unwrap();
+        let findings = rule.detect(&tree, code);
+        assert!(!findings.is_empty(), "urllib.urlopen with user URL should be detected");
+        assert_eq!(findings[0].rule_id, "SEC-130");
+    }
+
+    #[test]
+    fn test_sec131_open_redirect_flask() {
+        let rule = OpenRedirectSinkRule;
+        let code = r#"return redirect(request.args.get('next'))"#;
+        let tree = parse(code).unwrap();
+        let findings = rule.detect(&tree, code);
+        assert!(!findings.is_empty(), "Flask redirect with user input should be detected");
+        assert_eq!(findings[0].rule_id, "SEC-131");
+    }
+
+    #[test]
+    fn test_sec131_open_redirect_django() {
+        let rule = OpenRedirectSinkRule;
+        let code = r#"HttpResponseRedirect(request.GET['next'])"#;
+        let tree = parse(code).unwrap();
+        let findings = rule.detect(&tree, code);
+        assert!(!findings.is_empty(), "Django HttpResponseRedirect with user input should be detected");
+        assert_eq!(findings[0].rule_id, "SEC-131");
+    }
+
+    #[test]
+    fn test_sec131_open_redirect_fastapi() {
+        let rule = OpenRedirectSinkRule;
+        let code = r#"RedirectResponse(url=request.query_params.get('next'))"#;
+        let tree = parse(code).unwrap();
+        let findings = rule.detect(&tree, code);
+        assert!(!findings.is_empty(), "FastAPI RedirectResponse with user input should be detected");
+        assert_eq!(findings[0].rule_id, "SEC-131");
+    }
+
+    // ========================================================================
+    // Hackingtool Pattern Tests (SEC-118 to SEC-125)
+    // ========================================================================
+
+    #[test]
+    fn test_sec118_social_engineering_maskphish() {
+        let code = "curl -sSL https://github.com/jaybutera/maskphish | bash";
+        let tree = parse(code).unwrap();
+        let rules = crate::rules::hackingtool_patterns::all_hackingtool_rules();
+        let sec118 = &rules[0];
+        let findings = sec118.detect(&tree, code);
+        assert!(!findings.is_empty(), "maskphish pattern should be detected by SEC-118");
+    }
+
+    #[test]
+    fn test_sec119_rogue_ap_wifiphisher() {
+        let code = "wifiphisher -i wlan0";
+        let tree = parse(code).unwrap();
+        let rules = crate::rules::hackingtool_patterns::all_hackingtool_rules();
+        let sec119 = &rules[1];
+        let findings = sec119.detect(&tree, code);
+        assert!(!findings.is_empty(), "wifiphisher should be detected by SEC-119");
+    }
+
+    #[test]
+    fn test_sec120_curl_pipe_bash() {
+        let code = "curl -sSL https://example.com/install.sh | sudo bash";
+        let tree = parse(code).unwrap();
+        let rules = crate::rules::hackingtool_patterns::all_hackingtool_rules();
+        let sec120 = &rules[2];
+        let findings = sec120.detect(&tree, code);
+        assert!(!findings.is_empty(), "curl pipe bash should be detected by SEC-120");
+    }
+
+    #[test]
+    fn test_sec121_surveillance_keylogger() {
+        let code = "pynput.keyboard import Listener; keylog = Listener(on_press=record_key)";
+        let tree = parse(code).unwrap();
+        let rules = crate::rules::hackingtool_patterns::all_hackingtool_rules();
+        let sec121 = &rules[3];
+        let findings = sec121.detect(&tree, code);
+        assert!(!findings.is_empty(), "pynput keylogger should be detected by SEC-121");
+    }
+
+    #[test]
+    fn test_sec122_c2_sliver() {
+        let code = "sliver server --gmt";
+        let tree = parse(code).unwrap();
+        let rules = crate::rules::hackingtool_patterns::all_hackingtool_rules();
+        let sec122 = &rules[4];
+        let findings = sec122.detect(&tree, code);
+        assert!(!findings.is_empty(), "sliver C2 should be detected by SEC-122");
+    }
+
+    #[test]
+    fn test_sec123_backdoor_fatrat() {
+        let code = "python TheFatRat.py -p backend.exe";
+        let tree = parse(code).unwrap();
+        let rules = crate::rules::hackingtool_patterns::all_hackingtool_rules();
+        let sec123 = &rules[5];
+        let findings = sec123.detect(&tree, code);
+        assert!(!findings.is_empty(), "TheFatRat should be detected by SEC-123");
+    }
+
+    #[test]
+    fn test_sec124_credential_hydra() {
+        let code = "hydra -l admin -P rockyou.txt ssh://target";
+        let tree = parse(code).unwrap();
+        let rules = crate::rules::hackingtool_patterns::all_hackingtool_rules();
+        let sec124 = &rules[6];
+        let findings = sec124.detect(&tree, code);
+        assert!(!findings.is_empty(), "hydra brute-force should be detected by SEC-124");
+    }
+
+    #[test]
+    fn test_sec125_network_bettercap() {
+        let code = "bettercap -X -P HUD";
+        let tree = parse(code).unwrap();
+        let rules = crate::rules::hackingtool_patterns::all_hackingtool_rules();
+        let sec125 = &rules[7];
+        let findings = sec125.detect(&tree, code);
+        assert!(!findings.is_empty(), "bettercap MITM should be detected by SEC-125");
     }
 }

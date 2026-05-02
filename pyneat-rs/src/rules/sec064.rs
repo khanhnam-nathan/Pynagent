@@ -16,11 +16,18 @@
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::rules::base::{extract_snippet, Fix, Finding, Rule, Severity};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use tree_sitter::Tree;
 
 /// SEC-064: Weak JWT Secret Rule
 ///
 /// CWE-344: Use of Evidence Derived from Attack Vector
+static PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r#"(?i)(?:JWT_SECRET|JWT_KEY|SECRET_KEY|APP_SECRET)\s*[=:]\s*['"](?:secret|secret_key|123456|password|admin|changeme|your-secret|my-secret)['"]"#, "Hardcoded weak JWT secret"),
+    (r#"jwt\.encode\([^)]*,\s*['"][a-zA-Z0-9_\-]{1,50}['"]"#, "JWT encode with hardcoded short secret"),
+]);
+
 pub struct WeakJwtSecretRule;
 
 impl Rule for WeakJwtSecretRule {
@@ -31,13 +38,8 @@ impl Rule for WeakJwtSecretRule {
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
 
-        let patterns = [
-            (r#"(?i)(?:JWT_SECRET|JWT_KEY|SECRET_KEY|APP_SECRET)\s*[=:]\s*['"](?:secret|secret_key|123456|password|admin|changeme|your-secret|my-secret)['"]"#, "Hardcoded weak JWT secret"),
-            (r#"jwt\.encode\([^)]*,\s*['"][a-zA-Z0-9_\-]{1,50}['"]"#, "JWT encode with hardcoded short secret"),
-        ];
-
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {

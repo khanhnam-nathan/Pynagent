@@ -1,6 +1,6 @@
 [package]
 name = "pyneat-rs"
-version = "3.0.1"
+version = "3.1.0"
 edition = "2021"
 description = "High-performance security scanner for PyNeat written in Rust"
 authors = ["Khanh Nam <khanhnam.copywriting@gmail.com>"]
@@ -19,16 +19,19 @@ name = "pyneat"
 path = "src/main.rs"
 
 [dependencies]
-regex = "1.10"
+regex = "1.11"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-rayon = "1.8"
+rayon = "1.10"
 ahash = "0.8"
 walkdir = "2.4"
+smallvec = "1.13"
+bumpalo = "3.16"
 pyo3 = { version = "0.28", features = ["extension-module"] }
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "multipart"], default-features = false }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 once_cell = "1.19"
+dyn-clone = "1.0"
 
 # Tree-sitter for AST parsing
 tree-sitter = "0.23"
@@ -40,12 +43,12 @@ tree-sitter-typescript = "0.23"
 tree-sitter-go = "0.23"
 tree-sitter-java = "0.23"
 tree-sitter-rust = "0.23"
-tree-sitter-c-sharp = "0.23"
+tree-sitter-c-sharp = "=0.23.1"
 tree-sitter-php = "0.23"
 tree-sitter-ruby = "0.23"
 
 # CLI argument parsing
-clap = { version = "4.4", features = ["derive"] }
+clap = { version = "4.5", features = ["derive"] }
 
 # Logging
 tracing = "0.1"
@@ -57,9 +60,14 @@ cc = "1.0"
 
 [profile.release]
 opt-level = 3
-lto = true
-codegen-units = 1
+lto = "fat"  # Maximum link-time optimization
+codegen-units = 1  # Better optimization at cost of compile time
 strip = true
+panic = "abort"  # Smaller binary, faster panics
+
+# Optimize dependencies too
+[profile.dev]
+opt-level = 1  # Slightly optimized dev builds
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
@@ -71,4 +79,8 @@ harness = false
 
 [[bench]]
 name = "rule_benchmark"
+harness = false
+
+[[bench]]
+name = "compare"
 harness = false

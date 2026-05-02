@@ -17,7 +17,7 @@
 
 pub mod base;
 pub mod quality;
-pub use base::{extract_snippet, Rule};
+pub use base::Rule;
 
 // Security rules organized into submodules:
 // - security/ (security.rs) - core Python security rules (SEC-001 to SEC-059)
@@ -51,8 +51,16 @@ pub mod sec071;
 pub mod sec072;
 // SEC-073 to SEC-090 are now in security/php.rs (via security module)
 
+// Configurable rule system (Phase 4)
+pub mod config;
+
 // Extended security rules (SEC-073 to SEC-105+) in extended_security.rs
 pub mod extended_security;
+
+// Hackingtool-inspired security rules (SEC-118 to SEC-125)
+// Detects patterns from offensive security tools: phishing, rogue AP,
+// backdoors, C2, surveillance, credential attacks, MITM
+pub mod hackingtool_patterns;
 
 // AST-based security rules (semantic analysis on tree-sitter AST)
 pub mod ast_rules;

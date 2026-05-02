@@ -19,6 +19,7 @@
 use std::collections::HashSet;
 use crate::scanner::ln_ast::LnAst;
 use crate::scanner::base::{LangRule, LangFinding, LangFix};
+use regex::Regex;
 
 fn get_line_from_byte(code: &str, byte: usize) -> usize {
     code[..byte].matches('\n').count() + 1
@@ -40,6 +41,102 @@ fn get_line_offsets(code: &str, line: usize) -> (usize, usize) {
     }
     if line_end == line_start { line_end = code.len(); }
     (line_start, line_end)
+}
+
+fn get_line_text(code: &str, line: usize) -> Option<String> {
+    code.lines().nth(line.saturating_sub(1)).map(|l| l.to_string())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GO-SEC-034: Insecure Deserialization
+// Severity: critical | CWE-502
+// AI deserializes untrusted data with unsafe Go serialization formats
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct GoInsecureDeser;
+
+impl LangRule for GoInsecureDeser {
+    fn id(&self) -> &str { "GO-SEC-034" }
+    fn name(&self) -> &str { "Insecure Deserialization" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let dangerous_imports = ["encoding/gob", "github.com/ugorji/go/codec", "github.com/pelletier/go-toml"];
+
+        let has_dangerous = tree.imports.iter().any(|imp| {
+            dangerous_imports.iter().any(|d| imp.module.contains(d))
+        });
+
+        if !has_dangerous {
+            return findings;
+        }
+
+        let user_input_patterns = ["request", "input", "r.FormValue", "r.Form", "r.PostForm", "io.ReadAll", "ioutil.ReadAll"];
+
+        let dangerous_patterns: Vec<(&str, &str)> = vec![
+            // gob deserialization
+            (r#"gob\.NewDecoder\s*\([^)]*\)\.Decode\s*\(\s*&"#,
+             "gob decode — insecure deserialization format"),
+            (r#"gob\.Register\s*\(\s*\)"#, "gob.Register called — dynamic type registration"),
+
+            // ugorji/go/codec
+            (r#"codec\.NewDecoder\s*\([^)]*ioutil\.ReadAll|io\.ReadAll"#, "codec.NewDecoder with full reader — user input deserialization"),
+            (r#"codec\.NewDecoder\s*\([^)]*r\."#, "codec.NewDecoder reading from request — user input deserialization"),
+
+            // go-toml unsafe
+            (r#"toml\.Load\s*\([^)]*request|input|FormValue|Body"#, "toml.Load with user input — potential deserialization risk"),
+            (r#"toml\. Unmarshal\s*\([^)]*request|input|Body"#, "toml.Unmarshal with user input"),
+
+            // generic unsafe deserialization patterns
+            (r#"encoding\/json\.NewDecoder\s*\([^)]*io\.ReadAll\s*\([^)]*request"#, "JSON decoder reading request body directly"),
+            (r#"json\.Decoder.*\.Decode\s*\(\s*&[A-Z]"#, "JSON decode into struct from unvalidated source"),
+        ];
+
+        let has_user_input = tree.calls.iter().any(|call| {
+            user_input_patterns.iter().any(|p| call.callee.contains(p))
+        });
+
+        if !has_user_input {
+            return findings;
+        }
+
+        for (pattern, desc) in &dangerous_patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = get_line_from_byte(code, m.start());
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!(
+                            "Insecure deserialization: {}. CWE-502: Deserializing untrusted data \
+                            can lead to remote code execution, type confusion, or denial of service.",
+                            desc
+                        ),
+                        fix_hint: "Never deserialize untrusted data with gob encoding. Use JSON with \
+                            explicit type constraints, or use a safe serialization format. For TOML, \
+                            use toml.NewDecoder() with validation. Validate schema and bounds before \
+                            deserializing into structs.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn fix(&self, _finding: &LangFinding, _code: &str) -> Option<LangFix> { None }
+    fn supports_auto_fix(&self) -> bool { false }
 }
 
 fn add_finding(findings: &mut Vec<LangFinding>, rule_id: &str, severity: &str,
@@ -680,6 +777,908 @@ impl LangRule for GoAiGenComment {
     fn supports_auto_fix(&self) -> bool { false }
 }
 
+// ─── GO-SEC-016: SQL Injection in GORM ─────────────────────────────────────────
+
+pub struct GoGormSqlInjection;
+
+impl LangRule for GoGormSqlInjection {
+    fn id(&self) -> &str { "GO-SEC-016" }
+    fn name(&self) -> &str { "SQL Injection in GORM" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let patterns: Vec<(&str, &str)> = vec![
+            (r##"db\.Raw\s*\(\s*fmt\.Sprintf"##, "db.Raw with fmt.Sprintf - SQL injection risk"),
+            (r##"db\.Exec\s*\(\s*fmt\.Sprintf"##, "db.Exec with fmt.Sprintf - SQL injection risk"),
+            (r##"gorm\.Open\s*\([^)]*\)\s*\n[^)]*\.Raw\s*\(\s*fmt\.Sprintf"##, "GORM Raw with fmt.Sprintf"),
+            (r##"db\.Query\s*\(\s*fmt\.Sprintf"##, "db.Query with fmt.Sprintf - SQL injection risk"),
+            (r###".Scopes\s*\(\s*func\s*\([^)]*\)\s*\*gorm\.DB\s*\)".*(?i)"Raw""###, "GORM Scopes with Raw SQL"),
+        ];
+        for (pat, desc) in &patterns {
+            add_finding(&mut findings, self.id(), self.severity(), pat, desc, code);
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─── GO-SEC-017: Race Condition ────────────────────────────────────────────────
+
+pub struct GoRaceCondition;
+
+impl LangRule for GoRaceCondition {
+    fn id(&self) -> &str { "GO-SEC-017" }
+    fn name(&self) -> &str { "Race Condition - Shared Map Access" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let patterns: Vec<(&str, &str)> = vec![
+            (r##"map\[string\]\s+\w+\s*=\s*make\s*\(\s*map"##, "Shared map without mutex protection"),
+            (r##"var\s+\w+\s+map\["##, "Global map accessed without sync"),
+            (r##"sync\.Mutex"##, "Check mutex usage near map access"),
+        ];
+        for (pat, desc) in &patterns {
+            add_finding(&mut findings, self.id(), self.severity(), pat, desc, code);
+        }
+
+        let map_access_re = Regex::new(r"(?m)^\s*(\w+)\[|^+\s*]=\s*").unwrap();
+        let mutex_re = Regex::new(r"sync\.(Mutex|RWMutex)").unwrap();
+        let has_mutex = mutex_re.is_match(code);
+
+        if !has_mutex {
+            for m in map_access_re.find_iter(code) {
+                let line = code[..m.start()].matches('\n').count() + 1;
+                let line_text = get_line_text(code, line).unwrap_or_default();
+                if line_text.contains("map[") || line_text.contains("[") && line_text.contains("] =") {
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        snippet: line_text.trim().to_string(),
+                        problem: "Map access detected without mutex protection. Concurrent map access causes race condition.".to_string(),
+                        fix_hint: "Protect map access with sync.Mutex or sync.RWMutex. For high-concurrency code, consider sync.Map or a concurrent data structure.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─── GO-SEC-018: Missing Context Deadline ──────────────────────────────────────
+
+pub struct GoMissingContextDeadline;
+
+impl LangRule for GoMissingContextDeadline {
+    fn id(&self) -> &str { "GO-SEC-018" }
+    fn name(&self) -> &str { "Missing Context Deadline" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let patterns: Vec<(&str, &str)> = vec![
+            (r##"http\.Get\s*\(\s*[^)]+\)\s*(?!\s*,)"##, "http.Get without timeout context"),
+            (r##"http\.Post\s*\(\s*[^)]+\)\s*(?!\s*,)"##, "http.Post without timeout context"),
+            (r##"http\.DefaultClient\.Do\s*\(\s*req\s*\)\s*(?!\s*,)"##, "http.DefaultClient.Do without timeout"),
+            (r##"db\.Query\s*\(\s*[^)]+\)\s*(?!\s*,)"##, "DB Query without context"),
+            (r##"db\.Exec\s*\(\s*[^)]+\)\s*(?!\s*,)"##, "DB Exec without context"),
+        ];
+        for (pat, desc) in &patterns {
+            add_finding(&mut findings, self.id(), self.severity(), pat, desc, code);
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─── GO-SEC-019: Regex DoS (ReDoS) ─────────────────────────────────────────────
+
+pub struct GoRegexDos;
+
+impl LangRule for GoRegexDos {
+    fn id(&self) -> &str { "GO-SEC-019" }
+    fn name(&self) -> &str { "Regex Denial of Service (ReDoS)" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let patterns: Vec<(&str, &str)> = vec![
+            (r##"\*regexp\.Regexp|\bregexp\.(Must)?Compile"##, "Regexp compilation - check pattern for nested quantifiers"),
+            (r##"\.\+\.\+|\(\.\+\)\+|a\+"##, "Nested quantifiers - potential catastrophic backtracking"),
+            (r##"\.\*\.\*|\(\.\*\)\*|a\*"##, "Nested * quantifiers - catastrophic backtracking"),
+        ];
+        for (pat, desc) in &patterns {
+            add_finding(&mut findings, self.id(), self.severity(), pat, desc, code);
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─── GO-SEC-020: Integer Overflow / Wraparound ────────────────────────────────
+
+pub struct GoIntegerOverflow;
+
+impl LangRule for GoIntegerOverflow {
+    fn id(&self) -> &str { "GO-SEC-020" }
+    fn name(&self) -> &str { "Integer Overflow Risk" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let patterns: Vec<(&str, &str)> = vec![
+            (r##"\b\d+\s*[\+\-\*]\s*\d+"##, "Arithmetic operation without bounds check"),
+            (r##"int\([^)]*\)\s*[\+\-\*]\s*\d+"##, "int conversion with arithmetic"),
+            (r##"uint\([^)]*\)\s*[\+\-\*]\s*\d+"##, "uint conversion with arithmetic"),
+        ];
+        for (pat, desc) in &patterns {
+            add_finding(&mut findings, self.id(), self.severity(), pat, desc, code);
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─── GO-SEC-021: SSRF - Internal Metadata ──────────────────────────────────────
+
+pub struct GoSsrfInternal;
+
+impl LangRule for GoSsrfInternal {
+    fn id(&self) -> &str { "GO-SEC-021" }
+    fn name(&self) -> &str { "Server-Side Request Forgery (SSRF) - Internal Metadata" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let patterns: Vec<(&str, &str)> = vec![
+            (r##"169\.254\.169\.254"##, "AWS EC2 metadata endpoint"),
+            (r##"metadata\.google\.internal"##, "GCP metadata endpoint"),
+            (r##"metadata\.azure\.com"##, "Azure metadata endpoint"),
+            (r##"kubernetes\.docker\.internal"##, "Kubernetes internal API"),
+            (r##"host\.docker\.internal"##, "Docker host from container"),
+            (r##"127\.0\.0\.1:\s*2375|2376"##, "Docker daemon port exposure"),
+        ];
+        for (pat, desc) in &patterns {
+            add_finding(&mut findings, self.id(), self.severity(), pat, desc, code);
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─── GO-SEC-022: Command Injection - shell=True ──────────────────────────────
+
+pub struct GoCommandInjectionShell;
+
+impl LangRule for GoCommandInjectionShell {
+    fn id(&self) -> &str { "GO-SEC-022" }
+    fn name(&self) -> &str { "Command Injection via Shell Operators" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let patterns: Vec<(&str, &str)> = vec![
+            (r##"exec\.Command\s*\(\s*"sh"\s*,\s*"-c"\s*,\s*"##, "exec.Command with shell -c and string arg"),
+            (r##"exec\.Command\s*\(\s*"bash"\s*,\s*"-c"\s*,\s*"##, "exec.Command with bash -c and string arg"),
+            (r##"`[^`]*\$\([^)]+\)`"##, "Backtick command with command substitution"),
+            (r##"os/exec\.Command.*fmt\.Sprintf"##, "Command constructed via fmt.Sprintf"),
+        ];
+        for (pat, desc) in &patterns {
+            add_finding(&mut findings, self.id(), self.severity(), pat, desc, code);
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─── GO-SEC-023: SSRF - Deep Check ────────────────────────────────────────────
+
+pub struct GoSsrfDeep;
+
+impl LangRule for GoSsrfDeep {
+    fn id(&self) -> &str { "GO-SEC-023" }
+    fn name(&self) -> &str { "Server-Side Request Forgery (SSRF) - Deep Check" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let http_calls_with_user_input: Vec<(&str, &str)> = vec![
+            // http.Get with user input
+            (r##"http\.Get\s*\([^)]*r\.URL\.Query\(\)"##, "http.Get with r.URL.Query() - potential SSRF"),
+            (r##"http\.Get\s*\([^)]*r\.URL\.Path\(\)"##, "http.Get with r.URL.Path() - potential SSRF"),
+            (r##"http\.Get\s*\([^)]*FormValue"##, "http.Get with FormValue - potential SSRF"),
+            (r##"http\.Get\s*\([^)]*\.Query\s*\("##, "http.Get with query.Get() - potential SSRF"),
+            (r##"http\.Get\s*\([^)]*RequestURI"##, "http.Get with RequestURI - SSRF vulnerability"),
+            (r##"http\.Get\s*\([^)]*\.Host"##, "http.Get with r.Host - SSRF risk"),
+            // http.Post with user input
+            (r##"http\.Post\s*\([^)]*r\.URL\.Query\(\)"##, "http.Post with r.URL.Query() - potential SSRF"),
+            (r##"http\.Post\s*\([^)]*r\.URL\.Path\(\)"##, "http.Post with r.URL.Path() - potential SSRF"),
+            (r##"http\.Post\s*\([^)]*FormValue"##, "http.Post with FormValue - potential SSRF"),
+            (r##"http\.Post\s*\([^)]*PostFormValue"##, "http.Post with PostFormValue - SSRF risk"),
+            (r##"http\.Post\s*\([^)]*\.Form\["##, "http.Post with r.Form[] - SSRF risk"),
+            // httpClient.Do with user input
+            (r##"httpClient\.Do\s*\([^)]*r\.URL\.Query\(\)"##, "httpClient.Do with user-controlled URL"),
+            (r##"httpClient\.Do\s*\([^)]*FormValue"##, "httpClient.Do with FormValue - SSRF risk"),
+            // httpClient.Get with user input
+            (r##"httpClient\.Get\s*\([^)]*r\.URL\.Query\(\)"##, "httpClient.Get with r.URL.Query() - SSRF"),
+            (r##"httpClient\.Get\s*\([^)]*FormValue"##, "httpClient.Get with FormValue - SSRF"),
+            // httpClient.Post with user input
+            (r##"httpClient\.Post\s*\([^)]*r\.URL\.Path\(\)"##, "httpClient.Post with r.URL.Path() - SSRF"),
+            (r##"httpClient\.Post\s*\([^)]*PostFormValue"##, "httpClient.Post with PostFormValue - SSRF"),
+            // http.DefaultClient with user input
+            (r##"http\.DefaultClient\.Get\s*\([^)]*FormValue"##, "http.DefaultClient.Get with FormValue - SSRF"),
+            (r##"http\.DefaultClient\.Post\s*\([^)]*r\.Form\["##, "http.DefaultClient.Post with r.Form[] - SSRF"),
+            // params["url"] pattern
+            (r##"http\.Get\s*\([^)]*params\s*\[\s*["']url["']\s*\]"##, "http.Get with params[\"url\"] - SSRF"),
+            (r##"http\.Post\s*\([^)]*params\s*\[\s*["']url["']\s*\]"##, "http.Post with params[\"url\"] - SSRF"),
+        ];
+
+        for (pat, desc) in &http_calls_with_user_input {
+            add_finding(&mut findings, self.id(), self.severity(), pat, desc, code);
+        }
+
+        // Internal IP detection in URL literals
+        let internal_ip_patterns: Vec<(&str, &str)> = vec![
+            // AWS metadata
+            (r##"["'][^"']*169\.254\.169\.254[^"']*["']"##, "URL contains AWS metadata endpoint 169.254.169.254 - SSRF"),
+            // Loopback
+            (r##"["'][^"']*127\.0\.0\.1[^"']*["']"##, "URL contains localhost IP 127.0.0.1 - SSRF"),
+            (r##"["'][^"']*localhost[^"']*["']"##, "URL contains localhost - SSRF"),
+            // Private Class A (10.0.0.0/8)
+            (r##"["'][^"']*10\.\d{1,3}\.\d{1,3}\.\d{1,3}[^"']*["']"##, "URL contains 10.x.x.x private IP range - SSRF"),
+            // Private Class B (172.16.0.0/12)
+            (r##"["'][^"']*172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}[^"']*["']"##, "URL contains 172.16-31.x.x private IP - SSRF"),
+            // Private Class C (192.168.0.0/16)
+            (r##"["'][^"']*192\.168\.\d{1,3}\.\d{1,3}[^"']*["']"##, "URL contains 192.168.x.x private IP - SSRF"),
+        ];
+
+        for (pat, desc) in &internal_ip_patterns {
+            add_finding(&mut findings, self.id(), self.severity(), pat, desc, code);
+        }
+
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─── GO-SEC-024: Weak JWT Verification ────────────────────────────────────────
+
+pub struct GoWeakJwt;
+
+impl LangRule for GoWeakJwt {
+    fn id(&self) -> &str { "GO-SEC-024" }
+    fn name(&self) -> &str { "Weak JWT Verification" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let patterns: Vec<(&str, &str)> = vec![
+            (r##"jwt\.Parse\s*\([^)]*,\s*nil"##, "jwt.Parse with nil key - no signature verification"),
+            (r##"jwt\.Parse\s*\([^)]*,\s*\[\]byte\s*\(\s*""##, "jwt.Parse with empty byte slice as key"),
+            (r##"jwt\.Parse\s*\([^)]*,\s*\[\]byte\s*\(\s*"secret"\s*\)"##, "jwt.Parse with weak 'secret' key"),
+            (r##"jwt\.Parse\s*\([^)]*,\s*\[\]byte\s*\(\s*"password"\s*\)"##, "jwt.Parse with 'password' key"),
+            (r##"jwt\.ParseWithClaims\s*\([^)]*,\s*nil"##, "jwt.ParseWithClaims with nil keyfunc"),
+            (r##"jwt\.WithValidator\s*\([^)]*Keyfunc:\s*func"##, "jwt.WithValidator with keyfunc - verify it returns valid key"),
+            (r##"SigningKey:\s*\[\]byte\s*\(\s*""##, "JWT signing with empty key"),
+            (r##"SigningKey:\s*\[\]byte\s*\(\s*"secret"\s*\)"##, "JWT signing with weak 'secret' key"),
+            (r##"SigningKey:\s*\[\]byte\s*\(\s*"password"\s*\)"##, "JWT signing with 'password' key"),
+        ];
+        for (pat, desc) in &patterns {
+            add_finding(&mut findings, self.id(), self.severity(), pat, desc, code);
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─── GO-AI-005: Slopsquatting Typo Detection ──────────────────────────────────
+
+pub struct GoSlopsquattingTypo;
+
+impl LangRule for GoSlopsquattingTypo {
+    fn id(&self) -> &str { "GO-AI-005" }
+    fn name(&self) -> &str { "Typo-Squatted Go Package Import" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let typo_patterns: Vec<(&str, &str, &str)> = vec![
+            // fmt typos
+            (r##""fnt""##, "fmt", "Possible typo-squat of 'fmt' package"),
+            (r##""fmpt""##, "fmt", "Possible typo-squat of 'fmt' package"),
+            (r##""f\.mt""##, "fmt", "Possible typo-squat of 'fmt' package"),
+            (r##""fmtm""##, "fmt", "Possible typo-squat of 'fmt' package"),
+            // net/http typos
+            (r##""net/htp""##, "net/http", "Possible typo-squat of 'net/http' package"),
+            (r##""net/htpp""##, "net/http", "Possible typo-squat of 'net/http' package"),
+            (r##""net/htp""##, "net/http", "Possible typo-squat of 'net/http' package"),
+            // io/ioutil typos
+            (r##""io/iutl""##, "io/ioutil", "Possible typo-squat of 'io/ioutil' package"),
+            (r##""io/ioutl""##, "io/ioutil", "Possible typo-squat of 'io/ioutil' package"),
+            (r##""io/iutil""##, "io/ioutil", "Possible typo-squat of 'io/ioutil' package"),
+            // os/exec typos
+            (r##""os/exc""##, "os/exec", "Possible typo-squat of 'os/exec' package"),
+            (r##""os/exce""##, "os/exec", "Possible typo-squat of 'os/exec' package"),
+            // database/sql typos
+            (r##""databse/sql""##, "database/sql", "Possible typo-squat of 'database/sql' package"),
+            (r##""database/sgl""##, "database/sql", "Possible typo-squat of 'database/sql' package"),
+            // github.com typos
+            (r##""githb\.com""##, "github.com", "Possible typo-squat of 'github.com' domain"),
+            (r##""githu\.com""##, "github.com", "Possible typo-squat of 'github.com' domain"),
+            (r##""github\.con""##, "github.com", "Possible typo-squat of 'github.com' domain"),
+            (r##""guthub\.com""##, "github.com", "Possible typo-squat of 'github.com' domain"),
+            (r##""gihub\.com""##, "github.com", "Possible typo-squat of 'github.com' domain"),
+            // golang.org typos
+            (r##""golang\.or""##, "golang.org", "Possible typo-squat of 'golang.org' domain"),
+            (r##""golng\.org""##, "golang.org", "Possible typo-squat of 'golang.org' domain"),
+            // uber.org/zap typos
+            (r##""uber\.org/zpa""##, "uber.org/zap", "Possible typo-squat of 'uber.org/zap' package"),
+            (r##""uber\.org/zqp""##, "uber.org/zap", "Possible typo-squat of 'uber.org/zap' package"),
+        ];
+
+        for (pattern, _canonical, desc) in &typo_patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = get_line_from_byte(code, m.start());
+                    let (start, end) = get_line_offsets(code, line);
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: m.as_str().to_string(),
+                        problem: format!("Slopsquatting Risk: {}", desc),
+                        fix_hint: "Verify this package exists on pkg.go.dev before using.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        // Check for typosquatting keywords combined with known package patterns
+        let keyword_patterns: Vec<(&str, &str)> = vec![
+            (r##"github\.com/[^/]*/(typo|demo|test|lib|utils|helper)"##, "github.com with typosquatting keyword"),
+            (r##"golang\.org/[^/]*/(typo|demo|test|lib|utils|helper)"##, "golang.org with typosquatting keyword"),
+        ];
+
+        for (pattern, desc) in &keyword_patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = get_line_from_byte(code, m.start());
+                    let (start, end) = get_line_offsets(code, line);
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: m.as_str().to_string(),
+                        problem: format!("Slopsquatting Risk: {} in import path", desc),
+                        fix_hint: "Verify this package exists on pkg.go.dev before using.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─── GO-AI-006: Missing Nil Check After Marshal ──────────────────────────────
+
+pub struct GoMissingNilCheckAfterMarshal;
+
+impl LangRule for GoMissingNilCheckAfterMarshal {
+    fn id(&self) -> &str { "GO-AI-006" }
+    fn name(&self) -> &str { "Missing Nil Check After JSON Marshal/Unmarshal" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        // Pattern 1: json.Unmarshal followed by direct field access without nil check
+        let unmarshal_patterns: Vec<(&str, &str)> = vec![
+            (r##"json\.Unmarshal\s*\([^)]*,\s*&\w+\s*\)"##, "json.Unmarshal call detected"),
+            (r##"json\.NewDecoder\s*\([^)]*\)\.Decode\s*\(&"##, "json.NewDecoder.Decode call detected"),
+        ];
+
+        // Check for field access patterns that might be dangerous after Unmarshal
+        let field_access_patterns = [
+            (r##"\.\w+\s*=="##, "Field comparison after unmarshal"),
+            (r##"\.\w+\s*!="##, "Field comparison after unmarshal"),
+            (r##"if\s*\(\s*\w+\.\w+\s*\)"##, "Direct field check after unmarshal"),
+        ];
+
+        for (unmarshal_pattern, unmarshal_desc) in &unmarshal_patterns {
+            if let Ok(re) = Regex::new(unmarshal_pattern) {
+                for m in re.find_iter(code) {
+                    let unmarshal_line = get_line_from_byte(code, m.start());
+                    let unmarshal_context = &code[m.start()..];
+                    let next_500 = &unmarshal_context[..unmarshal_context.len().min(500)];
+
+                    // Check if there's a field access within the next few lines without an explicit nil/err check
+                    let has_error_check = next_500.contains("if err != nil");
+                    let has_nil_check = next_500.contains("== nil") || next_500.contains("!= nil");
+
+                    if !has_error_check && !has_nil_check {
+                        // Look for field access patterns
+                        for (access_pattern, access_desc) in &field_access_patterns {
+                            if let Ok(access_re) = Regex::new(access_pattern) {
+                                if access_re.is_match(next_500) {
+                                    let (start, end) = get_line_offsets(code, unmarshal_line);
+                                    findings.push(LangFinding {
+                                        rule_id: self.id().to_string(),
+                                        severity: self.severity().to_string(),
+                                        line: unmarshal_line,
+                                        column: 0,
+                                        start_byte: start,
+                                        end_byte: end,
+                                        snippet: m.as_str().to_string(),
+                                        problem: format!("Missing nil/error check after JSON operations: {}", unmarshal_desc),
+                                        fix_hint: "Always check the error return from json.Unmarshal before accessing fields. Example: if err := json.Unmarshal(data, &obj); err != nil { return err }. Verify obj is not nil before accessing fields.".to_string(),
+                                        auto_fix_available: false,
+                                    });
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Pattern 2: json.Marshal followed by use without error check
+        let marshal_patterns: Vec<(&str, &str)> = vec![
+            (r##"json\.Marshal\s*\([^)]+\s*\)\s*(?!\s*if)"##, "json.Marshal without immediate error check"),
+            (r##"json\.MarshalIndent\s*\([^)]+\s*\)\s*(?!\s*if)"##, "json.MarshalIndent without immediate error check"),
+        ];
+
+        for (pattern, desc) in &marshal_patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = get_line_from_byte(code, m.start());
+                    let context = &code[m.start()..];
+                    let next_300 = &context[..context.len().min(300)];
+
+                    // Check if error is checked in the same statement
+                    if !next_300.contains("err != nil") && !next_300.contains("_,") && !next_300.contains("_, err") {
+                        let (start, end) = get_line_offsets(code, line);
+                        findings.push(LangFinding {
+                            rule_id: self.id().to_string(),
+                            severity: self.severity().to_string(),
+                            line,
+                            column: 0,
+                            start_byte: start,
+                            end_byte: end,
+                            snippet: m.as_str().to_string(),
+                            problem: format!("Missing error check after JSON marshal: {}", desc),
+                            fix_hint: "Always check the error return from json.Marshal. Example: data, err := json.Marshal(v); if err != nil { return err }".to_string(),
+                            auto_fix_available: false,
+                        });
+                    }
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─── GO-AI-007: Off-by-one in Loop Bounds ───────────────────────────────────
+
+pub struct GoOffByOneLoopBounds;
+
+impl LangRule for GoOffByOneLoopBounds {
+    fn id(&self) -> &str { "GO-AI-007" }
+    fn name(&self) -> &str { "Off-by-one in Loop Bounds" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        // Pattern 1: for i := 0; i <= len(arr); i++ (should be < not <=)
+        let offbyone_patterns: Vec<(&str, &str)> = vec![
+            (r##"for\s+\w+\s*:=\s*0\s*;\s*\w+\s*<=\s*len\("##, "Loop uses <= with len() (off-by-one: should be <)"),
+            (r##"for\s+\w+\s*:=\s*0\s*;\s*\w+\s*<\s*len\([^)]+\)\s*\+\s*1"##, "Loop uses < len() + 1 (off-by-one)"),
+            (r##"for\s+\w+\s*:=\s*0\s*;\s*\w+\s*<=\s*len\([^)]+\)\s*\+\s*1"##, "Loop uses <= len() + 1 (definite off-by-one)"),
+            (r##"for\s+\w+\s*:=\s*0\s*;\s*\w+\s*<=\s*cap\("##, "Loop uses <= with cap() (off-by-one: should be <)"),
+        ];
+
+        // Pattern 2: range with len() in body that suggests off-by-one
+        let range_patterns: Vec<(&str, &str)> = vec![
+            (r##"for\s+\w+\s*:=\s*range\s+\w+\s*\{[^}]*\[len\("##, "Range loop accessing len() inside (possible off-by-one)"),
+        ];
+
+        for (pattern, desc) in &offbyone_patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = get_line_from_byte(code, m.start());
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!("Off-by-one in loop bounds: {}", desc),
+                        fix_hint: "Use < (strict less than) instead of <= when iterating over array/slice indices. Arrays are 0-indexed, so valid indices are 0 to len-1.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        for (pattern, desc) in &range_patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = get_line_from_byte(code, m.start());
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!("Potential off-by-one: {}", desc),
+                        fix_hint: "When using range, remember it returns index and value. Check that index access patterns are correct.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GO-CRYPT-001: Insecure TLS Configuration in Go
+// Severity: critical | CWE-295, CWE-327
+// Detects insecure TLS configuration patterns in Go code
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct GoInsecureTlsConfig;
+
+impl LangRule for GoInsecureTlsConfig {
+    fn id(&self) -> &str { "GO-CRYPT-001" }
+    fn name(&self) -> &str { "Insecure TLS Configuration" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let insecure_tls_patterns: Vec<(&str, &str)> = vec![
+            // InsecureSkipVerify patterns
+            (r##"InsecureSkipVerify\s*:\s*true"##, "InsecureSkipVerify: true - disables TLS certificate verification (MITM vulnerable)"),
+            (r##"TLSClientConfig\s*:\s*\&tls\.Config\{[^}]*InsecureSkipVerify\s*:\s*true"##, "TLSClientConfig with InsecureSkipVerify: true"),
+            (r##"tls\.Config\s*\{\s*InsecureSkipVerify\s*:\s*true"##, "tls.Config with InsecureSkipVerify: true"),
+            (r##"\&tls\.Config\s*\{\s*InsecureSkipVerify\s*:\s*true"##, "&tls.Config with InsecureSkipVerify: true"),
+            
+            // Deprecated TLS versions
+            (r##"MinVersion\s*:\s*tls\.VersionTLS10"##, "MinVersion: tls.VersionTLS10 - TLS 1.0 is deprecated (PCI DSS non-compliant)"),
+            (r##"MinVersion\s*:\s*tls\.VersionTLS11"##, "MinVersion: tls.VersionTLS11 - TLS 1.1 is deprecated"),
+            (r##"MinVersion\s*:\s*tls\.VersionSSL30"##, "MinVersion: tls.VersionSSL30 - SSL 3.0 is broken (POODLE)"),
+            (r##"MaxVersion\s*:\s*tls\.VersionTLS10"##, "MaxVersion: tls.VersionTLS10 - restricts to TLS 1.0 (deprecated)"),
+            (r##"MaxVersion\s*:\s*tls\.VersionTLS11"##, "MaxVersion: tls.VersionTLS11 - restricts to TLS 1.1 (deprecated)"),
+            
+            // Weak cipher suites
+            (r##"CipherSuites\s*:\s*\[\]"##, "Empty CipherSuites - uses default weak ciphers"),
+            (r##"CurvePreferences\s*:\s*\[\]"##, "Empty CurvePreferences - relies on default (potentially weak) curves"),
+            
+            // TLS version comparison patterns
+            (r##"tlsVersionMinSuite\s*:\s*tls\.TLSVersionSSL30"##, "tlsVersionMinSuite: SSLv3 (POODLE vulnerable)"),
+            (r##"tlsVersionMaxSuite\s*:\s*tls\.TLSVersionTLS10"##, "tlsVersionMaxSuite: TLS 1.0 (deprecated)"),
+        ];
+
+        for (pat, desc) in &insecure_tls_patterns {
+            if let Ok(re) = regex::Regex::new(pat) {
+                for m in re.find_iter(code) {
+                    let line = get_line_from_byte(code, m.start());
+                    let (start, end) = get_line_offsets(code, line);
+                    
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: m.as_str().to_string(),
+                        problem: format!(
+                            "Insecure TLS Configuration: {}. CWE-295/CWE-327: This configuration \
+                            disables certificate verification or uses deprecated protocols, enabling \
+                            man-in-the-middle attacks and exposing encrypted communications.",
+                            desc
+                        ),
+                        fix_hint: "Never set InsecureSkipVerify: true in production. Use TLS 1.2 minimum \
+                            (MinVersion: tls.VersionTLS12). Configure strong cipher suites. \
+                            Example: &tls.Config{MinVersion: tls.VersionTLS12, CipherSuites: [...]}. \
+                            For testing only: wrap in feature flag and never use in production.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        // Additional check for CurvePreferences missing (weak default curves)
+        let has_tls_config = code.contains("tls.Config") || code.contains("tls.ClientConfig");
+        let has_curve_preferences = code.contains("CurvePreferences");
+        let has_insecure_skip = code.contains("InsecureSkipVerify");
+        
+        if has_tls_config && !has_curve_preferences && !has_insecure_skip {
+            // This is informational - check if TLS is being configured
+            let tls_config_pattern = regex::Regex::new(r##"tls\.Config\s*\{"##).unwrap();
+            if tls_config_pattern.is_match(code) {
+                // Only flag if it's not already flagged with insecure patterns
+                let already_flagged = findings.iter().any(|f: &LangFinding| 
+                    f.rule_id == "GO-CRYPT-001" && f.line <= 50
+                );
+                if !already_flagged {
+                    // This is a subtle issue - TLS Config without CurvePreferences
+                    // Don't add to findings to avoid noise, just log intent
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GO-SEC-035: GORM Raw Query / Order By Injection
+// Severity: critical | CWE-89
+// GORM raw methods with string interpolation allow SQL injection
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct GoGormRawInjection;
+
+impl LangRule for GoGormRawInjection {
+    fn id(&self) -> &str { "GO-SEC-035" }
+    fn name(&self) -> &str { "SQL Injection (GORM Raw / Order By Injection)" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let gorm_imports = ["gorm.io/gorm", "github.com/jinzhu/gorm"];
+        let has_gorm = tree.imports.iter().any(|imp| {
+            gorm_imports.iter().any(|g| imp.module.contains(g))
+        });
+
+        if !has_gorm && !code.contains("gorm") {
+            return findings;
+        }
+
+        let dangerous_patterns = vec![
+            (r#"\.Raw\s*\([^)]*fmt\.Sprintf|fmt\.Errorf|fmt\.Print"#, "GORM Raw() with fmt.Sprintf — string interpolation SQL risk"),
+            (r#"\.Exec\s*\([^)]*\+[^)]*(?:r\.Form|r\.URL|r\.Body|r\.Header|req\.)"#, "GORM Exec() with string concatenation of user input"),
+            (r#"\.Order\s*\([^)]*\+[^)]*(?:r\.Form|r\.URL|r\.Body|req\.)"#, "GORM Order() with string concatenation — ORDER BY injection risk"),
+            (r#"\.Select\s*\([^)]*\+[^)]*(?:r\.Form|r\.URL|req\.)"#, "GORM Select() with string concatenation — column injection risk"),
+            (r#"\.Where\s*\([^)]*fmt\.Sprintf|fmt\.Sprintf[^)]*\+[^)]*\)"#, "GORM Where() with fmt.Sprintf — SQL injection risk"),
+            (r#"\.Find\s*\([^)]*fmt\.Sprintf"#, "GORM Find() with fmt.Sprintf — SQL injection risk"),
+            (r#"db\.Exec\s*\([^)]*fmt\.Sprintf|fmt\.Sprintf[^)]*\+[^)]*\)"#, "GORM db.Exec() with fmt.Sprintf SQL injection"),
+            (r#"gorm\.Raw\s*\([^)]*\+[^)]*(?:r\.Form|r\.URL|req\.)"#, "gorm.Raw with concatenation of user input"),
+        ];
+
+        for (pattern, desc) in &dangerous_patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    if findings.iter().any(|f: &LangFinding| f.line == line) {
+                        continue;
+                    }
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!(
+                            "GORM SQL injection: {}. CWE-89: GORM raw query methods with string \
+                            interpolation allow attackers to manipulate SQL queries, especially ORDER BY, \
+                            GROUP BY, and column names which cannot be parameterized.",
+                            desc
+                        ),
+                        fix_hint: "Never use string concatenation in GORM raw queries. Use parameterized queries: \
+                            db.Raw(\"SELECT * FROM users WHERE id = ?\", userID). \
+                            For ORDER BY with user input, whitelist: allowedFields := map[string]bool{\"name\":true}; \
+                            if !allowedFields[sortField] { return error }; \
+                            db.Order(sortField + \" \" + direction);".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GO-SEC-036: Insecure Direct Object Reference (IDOR)
+// Severity: high | CWE-639
+// Resource IDs from user input used directly without ownership verification
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct GoIdor;
+
+impl LangRule for GoIdor {
+    fn id(&self) -> &str { "GO-SEC-036" }
+    fn name(&self) -> &str { "Insecure Direct Object Reference (IDOR)" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let web_imports = ["net/http", "github.com/gin-gonic", "github.com/labstack/echo", "github.com/gorilla/mux", "go-chi", "net/rpc"];
+        let has_web = tree.imports.iter().any(|imp| {
+            web_imports.iter().any(|w| imp.module.contains(w))
+        });
+
+        if !has_web && !code.contains("http.HandlerFunc") {
+            return findings;
+        }
+
+        let dangerous_patterns = vec![
+            (r#"db\.(?:First|Where|Find|Delete|Update)\s*\(\s*&(?:User|Item|Resource|Account)[^)]*\)\s*(?:.*?)?(?:r\.FormValue|r\.URL|r\.Param|r\.Form)\s*\("#, "Database operation with user-provided ID without ownership check"),
+            (r#"FirstOrInit|FirstOrCreate|Assign\s*\([^)]*(?:r\.Form|r\.URL|r\.Param)\s*\("#, "GORM FirstOrCreate/Assign with user input — IDOR risk"),
+            (r#"ID\s*=\s*(?:r\.FormValue|r\.URL|r\.Param)\s*\([^)]*\).*?db\.(?:First|Update|Delete)\s*\("#, "ID from user input used in database operation without verification"),
+            (r#"fmt\.Sprintf\s*\([^)]*%s[^)]*(?:r\.FormValue|r\.URL|r\.Param)"#, "Sprintf with user input in database query"),
+            (r#"awsAccessKey\s*=\s*r\.FormValue|awsSecretKey\s*=\s*r\.FormValue"#, "AWS credentials from user input — IDOR can expose cloud resources"),
+        ];
+
+        for (pattern, desc) in &dangerous_patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    if findings.iter().any(|f: &LangFinding| f.line == line) {
+                        continue;
+                    }
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!(
+                            "Insecure Direct Object Reference (IDOR): {}. CWE-639: User-supplied object ID \
+                            used directly in a database or resource operation without verifying the user \
+                            owns or has permission to access that object.",
+                            desc
+                        ),
+                        fix_hint: "Always verify the user has permission to access the requested object: \
+                            resource, err := db.First(&obj, id); \
+                            if resource.UserID != currentUser.ID { return error }; \
+                            Use middleware or service-layer authorization checks.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GO-SEC-037: Command Injection via exec.LookPath / exec.Command
+// Severity: critical | CWE-78
+// User input passed to command execution without proper validation
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct GoCommandInjectionLookPath;
+
+impl LangRule for GoCommandInjectionLookPath {
+    fn id(&self) -> &str { "GO-SEC-037" }
+    fn name(&self) -> &str { "Command Injection (LookPath + exec.Command)" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let dangerous_patterns = vec![
+            (r#"exec\.LookPath\s*\([^)]*(?:r\.Form|r\.URL|r\.Param|r\.Body|os\.Args|flag|flag\.Arg)"#, "exec.LookPath with user input — command injection via PATH manipulation"),
+            (r#"exec\.Command\s*\([^)]*(?:r\.Form|r\.URL|r\.Param|r\.Body|os\.Args|flag)"#, "exec.Command with user input — command injection risk"),
+            (r#"exec\.Command\s*\(\s*(?:r\.FormValue|r\.URL|r\.Param|r\.Body)"#, "exec.Command using user-supplied command name"),
+            (r#"syscall\.Exec\s*\([^)]*(?:r\.Form|r\.URL|r\.Param)"#, "syscall.Exec with user input — direct command execution"),
+            (r#"os/exec\.Command.*?(?:r\.FormValue|r\.URL\.Query|r\.Param)"#, "os/exec.Command from HTTP request — command injection"),
+            (r#"\.Run\s*\(\s*\).*?(?:r\.Form|r\.URL|r\.Param)"#, "Command Run() with user input"),
+            (r#"os\.StartProcess\s*\([^)]*(?:r\.Form|r\.URL|r\.Param|flag)"#, "os.StartProcess with user-controlled arguments"),
+        ];
+
+        for (pattern, desc) in &dangerous_patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    if findings.iter().any(|f: &LangFinding| f.line == line) {
+                        continue;
+                    }
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!(
+                            "Command injection: {}. CWE-78: User input passed to exec.Command or \
+                            exec.LookPath allows attackers to execute arbitrary commands on the host.",
+                            desc
+                        ),
+                        fix_hint: "Never pass user input directly to exec.Command. Use exec.CommandContext \
+                            with validated, whitelisted values. Example: allowedCmds := map[string]bool{\"ls\":true}; \
+                            if !allowedCmds[cmd] { return error }; \
+                            exec.Command(cmd, args...).Run().".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
 // ─── All Go Rules ─────────────────────────────────────────────────────────────
 
 /// Get all Go language rules.
@@ -704,5 +1703,28 @@ pub fn go_rules() -> Vec<Box<dyn LangRule>> {
         Box::new(GoVerboseError),
         Box::new(GoMissingInputValidation),
         Box::new(GoAiGenComment),
+        Box::new(GoGormSqlInjection),
+        Box::new(GoRaceCondition),
+        Box::new(GoMissingContextDeadline),
+        Box::new(GoRegexDos),
+        Box::new(GoIntegerOverflow),
+        Box::new(GoSsrfInternal),
+        Box::new(GoCommandInjectionShell),
+        Box::new(GoSsrfDeep),
+        Box::new(GoWeakJwt),
+        Box::new(GoSlopsquattingTypo),
+        Box::new(GoMissingNilCheckAfterMarshal),
+        Box::new(GoOffByOneLoopBounds),
+        // GO-CRYPT-001: Insecure TLS Configuration
+        Box::new(GoInsecureTlsConfig),
+        // GO-SEC-034: Insecure Deserialization
+        Box::new(GoInsecureDeser),
+        // GO-SEC-035 to GO-SEC-037: Vulnerable Sink Detection (Reverse-Engineered from hackingtool)
+        // GO-SEC-035: GORM Raw Query Injection
+        Box::new(GoGormRawInjection),
+        // GO-SEC-036: Insecure Direct Object Reference
+        Box::new(GoIdor),
+        // GO-SEC-037: Command Injection via os/exec LookPath
+        Box::new(GoCommandInjectionLookPath),
     ]
 }

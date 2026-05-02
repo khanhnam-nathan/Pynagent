@@ -16,11 +16,18 @@
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::rules::base::{extract_snippet, Fix, Finding, Rule, Severity};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use tree_sitter::Tree;
 
 /// SEC-066: Timing Attack Vulnerability Rule
 ///
 /// CWE-208: Observable Timing Discrepancy
+static PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r#"(?i)(?:token|api_key|password|secret|auth)\s*[=:]\s*[^;]+(?!hmac\.compare|secrets\.compare|timing_safe)"#, "Direct comparison of sensitive data"),
+    (r#"(?i)==\s*(?:token|api_key|password|secret|auth|key)"#, "Direct equality check on sensitive value"),
+]);
+
 pub struct TimingAttackRule;
 
 impl Rule for TimingAttackRule {
@@ -31,13 +38,8 @@ impl Rule for TimingAttackRule {
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
 
-        let vulnerable_patterns = [
-            (r#"(?i)(?:token|api_key|password|secret|auth)\s*[=:]\s*[^;]+(?!hmac\.compare|secrets\.compare|timing_safe)"#, "Direct comparison of sensitive data"),
-            (r#"(?i)==\s*(?:token|api_key|password|secret|auth|key)"#, "Direct equality check on sensitive value"),
-        ];
-
-        for (pattern, desc) in &vulnerable_patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let matched = m.as_str();
                     if !matched.contains("hmac.compare") && !matched.contains("secrets.compare") &&

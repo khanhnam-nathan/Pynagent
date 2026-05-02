@@ -25,14 +25,158 @@ Supports loading configuration from:
 - pyproject.toml [tool.pyneat] section
 - Environment variables (PYNEAT_*)
 - Command-line arguments (passed to load_config)
+
+Example .pyneat.yaml:
+    rules:
+      SEC-010:
+        enabled: true
+        params:
+          min_entropy: 4.5
+          skip_patterns: [".*_TEST.*", "MOCK_.*"]
+          include_patterns: []
+      SEC-076:
+        enabled: true
+        params:
+          min_hash_bits: 256
+      SEC-084:
+        enabled: false
 """
 
 import os
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
 import yaml
+
+
+# --------------------------------------------------------------------------
+# Rule Configuration Spec
+# --------------------------------------------------------------------------
+
+
+@dataclass
+class RuleConfigSpec:
+    """Per-rule configuration from .pyneat.yaml.
+    
+    Attributes:
+        rule_id: The rule identifier (e.g., "SEC-010", "QUAL-001")
+        enabled: Whether the rule is enabled (default: True)
+        params: Rule-specific parameters (e.g., min_entropy, skip_patterns)
+    """
+    rule_id: str
+    enabled: bool = True
+    params: Dict[str, Any] = field(default_factory=dict)
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "RuleConfigSpec":
+        """Create a RuleConfigSpec from a dict."""
+        return cls(
+            rule_id=data.get("rule_id", data.get("id", "")),
+            enabled=data.get("enabled", True),
+            params=data.get("params", {}),
+        )
+    
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get a parameter value with a default."""
+        return self.params.get(key, default)
+    
+    def get_float(self, key: str, default: float = 0.0) -> float:
+        """Get a float parameter."""
+        val = self.params.get(key)
+        if val is None:
+            return default
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return default
+    
+    def get_int(self, key: str, default: int = 0) -> int:
+        """Get an int parameter."""
+        val = self.params.get(key)
+        if val is None:
+            return default
+        try:
+            return int(val)
+        except (ValueError, TypeError):
+            return default
+    
+    def get_list(self, key: str, default: Optional[List[str]] = None) -> List[str]:
+        """Get a list of strings parameter."""
+        val = self.params.get(key)
+        if val is None:
+            return default if default is not None else []
+        if isinstance(val, list):
+            return [str(v) for v in val]
+        return default if default is not None else []
+
+
+@dataclass
+class PyneatConfig:
+    """Full PyNEAT configuration loaded from .pyneat.yaml.
+    
+    Attributes:
+        rules: List of per-rule configurations
+        severity_threshold: Minimum severity to report
+        exclude: Paths to exclude from scanning
+        cache: Cache settings
+    """
+    rules: List[RuleConfigSpec] = field(default_factory=list)
+    severity_threshold: str = "info"
+    exclude: List[str] = field(default_factory=list)
+    cache_enabled: bool = True
+    
+    @classmethod
+    def from_yaml(cls, path: Path) -> "PyneatConfig":
+        """Load PyneatConfig from a YAML file."""
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+        except Exception:
+            return cls()
+        
+        raw_rules = data.get("rules", {})
+        rule_specs = []
+        if isinstance(raw_rules, dict):
+            for rule_id, cfg in raw_rules.items():
+                if isinstance(cfg, dict):
+                    spec = RuleConfigSpec(
+                        rule_id=rule_id,
+                        enabled=cfg.get("enabled", True),
+                        params=cfg.get("params", {}),
+                    )
+                else:
+                    spec = RuleConfigSpec(rule_id=rule_id, enabled=bool(cfg))
+                rule_specs.append(spec)
+        elif isinstance(raw_rules, list):
+            for item in raw_rules:
+                if isinstance(item, dict):
+                    rule_specs.append(RuleConfigSpec.from_dict(item))
+        
+        return cls(
+            rules=rule_specs,
+            severity_threshold=data.get("severity_threshold", "info"),
+            exclude=data.get("exclude", []),
+            cache_enabled=data.get("cache", {}).get("enabled", True),
+        )
+    
+    def get_rule_config(self, rule_id: str) -> Optional[RuleConfigSpec]:
+        """Get the configuration for a specific rule."""
+        for spec in self.rules:
+            if spec.rule_id == rule_id:
+                return spec
+        return None
+    
+    def is_enabled(self, rule_id: str) -> bool:
+        """Check if a rule is enabled (default: True if not specified)."""
+        cfg = self.get_rule_config(rule_id)
+        return cfg.enabled if cfg else True
+    
+    def get_rule_params(self, rule_id: str) -> Dict[str, Any]:
+        """Get the parameters for a specific rule (empty dict if not configured)."""
+        cfg = self.get_rule_config(rule_id)
+        return cfg.params if cfg else {}
 
 
 class ConfigLoader:
@@ -121,13 +265,13 @@ class ConfigLoader:
             if sys.version_info >= (3, 11):
                 import tomllib
                 with open(path, "rb") as f:
-                    data = tomllib.load(f)
+                    return tomllib.load(f).get("tool", {}).get("pyneat", {})
             else:
                 import tomli
                 with open(path, "rb") as f:
-                    data = tomli.load(f)
-
-            return data.get("tool", {}).get("pyneat", {})
+                    return tomli.load(f).get("tool", {}).get("pyneat", {})
+        except ImportError:
+            raise
         except Exception:
             return {}
 
@@ -292,3 +436,45 @@ def get_config(key: str, default: Any = None) -> Any:
         Configuration value or default
     """
     return get_config_loader().get(key, default)
+
+
+def get_rule_params(rule_id: str) -> Dict[str, Any]:
+    """Get the configured parameters for a specific rule.
+
+    Args:
+        rule_id: The rule identifier (e.g., "SEC-010")
+
+    Returns:
+        Dictionary of parameters for the rule, or empty dict if not configured.
+    """
+    cfg = get_config_loader().load()
+    rules = cfg.get("rules", {})
+    if isinstance(rules, dict):
+        rule_cfg = rules.get(rule_id, {})
+        if isinstance(rule_cfg, dict):
+            return rule_cfg.get("params", {})
+        if isinstance(rule_cfg, bool):
+            return {}
+    return {}
+
+
+def is_rule_enabled(rule_id: str) -> bool:
+    """Check if a rule is enabled in the config.
+
+    Args:
+        rule_id: The rule identifier
+
+    Returns:
+        True if the rule is enabled (default) or not explicitly disabled.
+    """
+    cfg = get_config_loader().load()
+    rules = cfg.get("rules", {})
+    if isinstance(rules, dict):
+        rule_cfg = rules.get(rule_id)
+        if rule_cfg is None:
+            return True
+        if isinstance(rule_cfg, bool):
+            return rule_cfg
+        if isinstance(rule_cfg, dict):
+            return rule_cfg.get("enabled", True)
+    return True

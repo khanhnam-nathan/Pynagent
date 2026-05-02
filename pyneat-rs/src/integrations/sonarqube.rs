@@ -5,7 +5,6 @@
 //! Integrates with SonarQube for SAST analysis.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 // --------------------------------------------------------------------------
 // SonarQube Configuration
@@ -215,16 +214,22 @@ fn escape_xml(s: &str) -> String {
 #[derive(Debug, Clone)]
 pub struct SonarQubeClient {
     pub config: SonarQubeConfig,
+    client: reqwest::Client,
 }
 
 impl SonarQubeClient {
     pub fn new(config: SonarQubeConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new()),
+        }
     }
 
     /// Create an issue in SonarQube.
     pub async fn create_issue(&self, issue: &SonarQubeIssue) -> Result<String, String> {
-        let client = reqwest::Client::new();
         let url = format!("{}/api/issues/search", self.config.url);
 
         let mut form: std::collections::HashMap<&str, String> = std::collections::HashMap::new();
@@ -234,7 +239,7 @@ impl SonarQubeClient {
         form.insert("component", issue.location.file.clone());
         form.insert("severity", issue.severity.clone());
 
-        let mut request = client.post(&url)
+        let mut request = self.client.post(&url)
             .header("Content-Type", "application/json");
 
         if let Some(token) = &self.config.token {
@@ -257,13 +262,12 @@ impl SonarQubeClient {
 
     /// Get project quality gates status.
     pub async fn get_quality_gate_status(&self) -> Result<QualityGateStatus, String> {
-        let client = reqwest::Client::new();
         let url = format!(
             "{}/api/qualitygates/project_status?project={}",
             self.config.url, self.config.project_key
         );
 
-        let mut request = client.get(&url);
+        let mut request = self.client.get(&url);
 
         if let Some(token) = &self.config.token {
             request = request.basic_auth("admin", Some(token));

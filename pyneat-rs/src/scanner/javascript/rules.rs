@@ -21,6 +21,13 @@ use std::collections::HashSet;
 
 use crate::scanner::ln_ast::{LnAst, LnCall};
 use crate::scanner::base::{LangRule, LangFinding, LangFix};
+use regex::Regex;
+
+/// Helper: get the text content of a specific line (1-indexed).
+#[allow(dead_code)]
+fn get_line_text(code: &str, line: usize) -> Option<String> {
+    code.lines().nth(line.saturating_sub(1)).map(|l| l.to_string())
+}
 
 /// Detect console.log and console.error statements.
 pub struct JSConsoleStatements;
@@ -165,7 +172,7 @@ impl LangRule for JSDebuggerStatement {
     fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
         let mut findings = vec![];
         let mut line_num = 0;
-        let mut char_offset = 0;
+        let char_offset = 0;
 
         for line in code.lines() {
             line_num += 1;
@@ -183,7 +190,7 @@ impl LangRule for JSDebuggerStatement {
                     auto_fix_available: true,
                 });
             }
-            char_offset += line.len() + 1; // +1 for newline
+            let _char_offset = line.len() + 1; // +1 for newline
         }
 
         findings
@@ -501,7 +508,7 @@ impl LangRule for JSSXSSRule {
         for (pattern, _) in &xss_patterns {
             if let Ok(re) = regex::Regex::new(pattern) {
                 let mut line_num = 0;
-                let mut char_offset = 0usize;
+                let char_offset = 0usize;
                 for line in code.lines() {
                     line_num += 1;
                     if re.is_match(line) {
@@ -521,7 +528,7 @@ impl LangRule for JSSXSSRule {
                             });
                         }
                     }
-                    char_offset += line.len() + 1;
+                    let _char_offset = line.len() + 1;
                 }
             }
         }
@@ -582,7 +589,7 @@ impl LangRule for JSSQLInjectionRule {
         for (pattern, desc) in &patterns {
             if let Ok(re) = regex::Regex::new(pattern) {
                 let mut line_num = 0usize;
-                let mut char_offset = 0usize;
+                let char_offset = 0usize;
                 for line in code.lines() {
                     line_num += 1;
                     if re.is_match(line) {
@@ -599,7 +606,7 @@ impl LangRule for JSSQLInjectionRule {
                             auto_fix_available: false,
                         });
                     }
-                    char_offset += line.len() + 1;
+                    let _char_offset = line.len() + 1;
                 }
             }
         }
@@ -653,7 +660,9 @@ impl LangRule for JSCommandInjectionRule {
         ].into_iter().collect();
 
         let mut all_calls: Vec<LnCall> = tree.calls.clone();
-        all_calls.extend(tree.calls.iter().cloned());
+        // Remove duplicate calls (same function, same line)
+        all_calls.sort_by_key(|c| (c.start_line, c.callee.clone()));
+        all_calls.dedup_by_key(|c| (c.start_line, c.callee.clone()));
 
         for call in &all_calls {
             if dangerous_calls.contains(call.callee.as_str())
@@ -684,7 +693,7 @@ impl LangRule for JSCommandInjectionRule {
         for (pattern, _) in &patterns {
             if let Ok(re) = regex::Regex::new(pattern) {
                 let mut line_num = 0usize;
-                let mut char_offset = 0usize;
+                let char_offset = 0usize;
                 for line in code.lines() {
                     line_num += 1;
                     if re.is_match(line) {
@@ -705,7 +714,7 @@ impl LangRule for JSCommandInjectionRule {
                             });
                         }
                     }
-                    char_offset += line.len() + 1;
+                    let _char_offset = line.len() + 1;
                 }
             }
         }
@@ -761,7 +770,7 @@ impl LangRule for JSJWTSecurityRule {
         for (pattern, desc) in &patterns {
             if let Ok(re) = regex::Regex::new(pattern) {
                 let mut line_num = 0usize;
-                let mut char_offset = 0usize;
+                let char_offset = 0usize;
                 for line in code.lines() {
                     line_num += 1;
                     if re.is_match(line) {
@@ -779,7 +788,7 @@ impl LangRule for JSJWTSecurityRule {
                             auto_fix_available: false,
                         });
                     }
-                    char_offset += line.len() + 1;
+                    let _char_offset = line.len() + 1;
                 }
             }
         }
@@ -870,7 +879,7 @@ impl LangRule for JSPathTraversalRule {
         for (pattern, _) in &patterns {
             if let Ok(re) = regex::Regex::new(pattern) {
                 let mut line_num = 0usize;
-                let mut char_offset = 0usize;
+                let char_offset = 0usize;
                 for line in code.lines() {
                     line_num += 1;
                     if re.is_match(line) {
@@ -891,7 +900,7 @@ impl LangRule for JSPathTraversalRule {
                             });
                         }
                     }
-                    char_offset += line.len() + 1;
+                    let _char_offset = line.len() + 1;
                 }
             }
         }
@@ -945,7 +954,7 @@ impl LangRule for JSPrototypePollutionRule {
         for (pattern, desc) in &patterns {
             if let Ok(re) = regex::Regex::new(pattern) {
                 let mut line_num = 0usize;
-                let mut char_offset = 0usize;
+                let char_offset = 0usize;
                 for line in code.lines() {
                     line_num += 1;
                     if re.is_match(line) {
@@ -963,7 +972,7 @@ impl LangRule for JSPrototypePollutionRule {
                             auto_fix_available: false,
                         });
                     }
-                    char_offset += line.len() + 1;
+                    let _char_offset = line.len() + 1;
                 }
             }
         }
@@ -1050,7 +1059,7 @@ impl LangRule for JSSSRFRule {
         for (pattern, desc) in &http_patterns {
             if let Ok(re) = regex::Regex::new(pattern) {
                 let mut line_num = 0usize;
-                let mut char_offset = 0usize;
+                let char_offset = 0usize;
                 for line in code.lines() {
                     line_num += 1;
                     if re.is_match(line) {
@@ -1071,7 +1080,7 @@ impl LangRule for JSSSRFRule {
                             });
                         }
                     }
-                    char_offset += line.len() + 1;
+                    let _char_offset = line.len() + 1;
                 }
             }
         }
@@ -1127,7 +1136,7 @@ impl LangRule for JSOpenRedirectRule {
         for (pattern, desc) in &patterns {
             if let Ok(re) = regex::Regex::new(pattern) {
                 let mut line_num = 0usize;
-                let mut char_offset = 0usize;
+                let char_offset = 0usize;
                 for line in code.lines() {
                     line_num += 1;
                     if re.is_match(line) {
@@ -1145,7 +1154,7 @@ impl LangRule for JSOpenRedirectRule {
                             auto_fix_available: false,
                         });
                     }
-                    char_offset += line.len() + 1;
+                    let _char_offset = line.len() + 1;
                 }
             }
         }
@@ -1204,7 +1213,7 @@ impl LangRule for JSHardcodedSecretsRule {
         for (pattern, desc) in &patterns {
             if let Ok(re) = regex::Regex::new(pattern) {
                 let mut line_num = 0usize;
-                let mut char_offset = 0usize;
+                let char_offset = 0usize;
                 for line in code.lines() {
                     line_num += 1;
                     if re.is_match(line) {
@@ -1222,7 +1231,7 @@ impl LangRule for JSHardcodedSecretsRule {
                             auto_fix_available: false,
                         });
                     }
-                    char_offset += line.len() + 1;
+                    let _char_offset = line.len() + 1;
                 }
             }
         }
@@ -1279,7 +1288,7 @@ impl LangRule for JSCookieSecurityRule {
         for (pattern, desc) in &http_only_patterns {
             if let Ok(re) = regex::Regex::new(pattern) {
                 let mut line_num = 0usize;
-                let mut char_offset = 0usize;
+                let char_offset = 0usize;
                 for line in code.lines() {
                     line_num += 1;
                     if re.is_match(line) {
@@ -1309,7 +1318,7 @@ impl LangRule for JSCookieSecurityRule {
                             });
                         }
                     }
-                    char_offset += line.len() + 1;
+                    let _char_offset = line.len() + 1;
                 }
             }
         }
@@ -1361,7 +1370,7 @@ impl LangRule for JSCORSMisconfigRule {
         for (pattern, desc) in &patterns {
             if let Ok(re) = regex::Regex::new(pattern) {
                 let mut line_num = 0usize;
-                let mut char_offset = 0usize;
+                let char_offset = 0usize;
                 for line in code.lines() {
                     line_num += 1;
                     if re.is_match(line) {
@@ -1379,7 +1388,7 @@ impl LangRule for JSCORSMisconfigRule {
                             auto_fix_available: false,
                         });
                     }
-                    char_offset += line.len() + 1;
+                    let _char_offset = line.len() + 1;
                 }
             }
         }
@@ -1434,7 +1443,7 @@ impl LangRule for JSMassAssignmentRule {
         for (pattern, desc) in &patterns {
             if let Ok(re) = regex::Regex::new(pattern) {
                 let mut line_num = 0usize;
-                let mut char_offset = 0usize;
+                let char_offset = 0usize;
                 for line in code.lines() {
                     line_num += 1;
                     if re.is_match(line) {
@@ -1452,7 +1461,7 @@ impl LangRule for JSMassAssignmentRule {
                             auto_fix_available: false,
                         });
                     }
-                    char_offset += line.len() + 1;
+                    let _char_offset = line.len() + 1;
                 }
             }
         }
@@ -1539,7 +1548,7 @@ impl LangRule for JSEvalRule {
         for (pattern, desc) in &patterns {
             if let Ok(re) = regex::Regex::new(pattern) {
                 let mut line_num = 0usize;
-                let mut char_offset = 0usize;
+                let char_offset = 0usize;
                 for line in code.lines() {
                     line_num += 1;
                     if re.is_match(line) {
@@ -1560,7 +1569,7 @@ impl LangRule for JSEvalRule {
                             });
                         }
                     }
-                    char_offset += line.len() + 1;
+                    let _char_offset = line.len() + 1;
                 }
             }
         }
@@ -1643,7 +1652,7 @@ impl LangRule for JSNoSQLInjectionRule {
         for (pattern, desc) in &patterns {
             if let Ok(re) = regex::Regex::new(pattern) {
                 let mut line_num = 0usize;
-                let mut char_offset = 0usize;
+                let char_offset = 0usize;
                 for line in code.lines() {
                     line_num += 1;
                     if re.is_match(line) {
@@ -1664,7 +1673,7 @@ impl LangRule for JSNoSQLInjectionRule {
                             });
                         }
                     }
-                    char_offset += line.len() + 1;
+                    let _char_offset = line.len() + 1;
                 }
             }
         }
@@ -1721,7 +1730,7 @@ impl LangRule for JSDOMXSSRule {
         for (pattern, desc) in &patterns {
             if let Ok(re) = regex::Regex::new(pattern) {
                 let mut line_num = 0usize;
-                let mut char_offset = 0usize;
+                let char_offset = 0usize;
                 for line in code.lines() {
                     line_num += 1;
                     if re.is_match(line) {
@@ -1739,7 +1748,7 @@ impl LangRule for JSDOMXSSRule {
                             auto_fix_available: false,
                         });
                     }
-                    char_offset += line.len() + 1;
+                    let _char_offset = line.len() + 1;
                 }
             }
         }
@@ -1799,7 +1808,7 @@ impl LangRule for JSInputValidationRule {
         for (pattern, desc) in &api_route_patterns {
             if let Ok(re) = regex::Regex::new(pattern) {
                 let mut line_num = 0usize;
-                let mut char_offset = 0usize;
+                let char_offset = 0usize;
                 for line in code.lines() {
                     line_num += 1;
                     if re.is_match(line) {
@@ -1817,7 +1826,7 @@ impl LangRule for JSInputValidationRule {
                             auto_fix_available: false,
                         });
                     }
-                    char_offset += line.len() + 1;
+                    let _char_offset = line.len() + 1;
                 }
             }
         }
@@ -1829,7 +1838,7 @@ impl LangRule for JSInputValidationRule {
             // Only add if no other findings were made about validation
             if findings.is_empty() {
                 let mut line_num = 0usize;
-                let mut char_offset = 0usize;
+                let char_offset = 0usize;
                 for line in code.lines() {
                     line_num += 1;
                     if line.contains("app.") || line.contains("router.") {
@@ -1851,7 +1860,7 @@ impl LangRule for JSInputValidationRule {
                             break;
                         }
                     }
-                    char_offset += line.len() + 1;
+                    let _char_offset = line.len() + 1;
                 }
             }
         }
@@ -1906,7 +1915,7 @@ impl LangRule for JSSSTIRule {
         for (pattern, desc) in &patterns {
             if let Ok(re) = regex::Regex::new(pattern) {
                 let mut line_num = 0usize;
-                let mut char_offset = 0usize;
+                let char_offset = 0usize;
                 for line in code.lines() {
                     line_num += 1;
                     if re.is_match(line) {
@@ -1924,7 +1933,7 @@ impl LangRule for JSSSTIRule {
                             auto_fix_available: false,
                         });
                     }
-                    char_offset += line.len() + 1;
+                    let _char_offset = line.len() + 1;
                 }
             }
         }
@@ -1982,7 +1991,7 @@ impl LangRule for JSWeakCryptoRule {
         for (pattern, desc) in &patterns {
             if let Ok(re) = regex::Regex::new(pattern) {
                 let mut line_num = 0usize;
-                let mut char_offset = 0usize;
+                let char_offset = 0usize;
                 for line in code.lines() {
                     line_num += 1;
                     if re.is_match(line) {
@@ -2000,7 +2009,7 @@ impl LangRule for JSWeakCryptoRule {
                             auto_fix_available: false,
                         });
                     }
-                    char_offset += line.len() + 1;
+                    let _char_offset = line.len() + 1;
                 }
             }
         }
@@ -2072,7 +2081,7 @@ impl LangRule for JSSecurityHeadersRule {
             for (pattern, _) in &patterns {
                 if let Ok(re) = regex::Regex::new(pattern) {
                     let mut line_num = 0usize;
-                    let mut char_offset = 0usize;
+                    let char_offset = 0usize;
                     for line in code.lines() {
                         line_num += 1;
                         if re.is_match(line) && !added {
@@ -2095,7 +2104,7 @@ impl LangRule for JSSecurityHeadersRule {
                             });
                             added = true;
                         }
-                        char_offset += line.len() + 1;
+                        let _char_offset = line.len() + 1;
                     }
                 }
             }
@@ -2166,7 +2175,7 @@ impl LangRule for JSPromptInjectionRule {
             for (pattern, desc) in &llm_patterns {
                 if let Ok(re) = regex::Regex::new(pattern) {
                     let mut line_num = 0usize;
-                    let mut char_offset = 0usize;
+                    let char_offset = 0usize;
                     for line in code.lines() {
                         line_num += 1;
                         if re.is_match(line) {
@@ -2184,7 +2193,7 @@ impl LangRule for JSPromptInjectionRule {
                                 auto_fix_available: false,
                             });
                         }
-                        char_offset += line.len() + 1;
+                        let _char_offset = line.len() + 1;
                     }
                 }
             }
@@ -2193,7 +2202,7 @@ impl LangRule for JSPromptInjectionRule {
             for (pattern, _) in &user_input_patterns {
                 if let Ok(re) = regex::Regex::new(pattern) {
                     let mut line_num = 0usize;
-                    let mut char_offset = 0usize;
+                    let char_offset = 0usize;
                     for line in code.lines() {
                         line_num += 1;
                         if re.is_match(line) && line.contains("messages") {
@@ -2214,7 +2223,7 @@ impl LangRule for JSPromptInjectionRule {
                                 });
                             }
                         }
-                        char_offset += line.len() + 1;
+                        let _char_offset = line.len() + 1;
                     }
                 }
             }
@@ -2361,6 +2370,369 @@ impl LangRule for JSAiGenComment {
 }
 
 // =============================================================================
+// AI RULES
+// =============================================================================
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JS-AI-004: Typosquatting
+// Severity: critical | CWE-1335
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JSTyposquatting;
+
+impl LangRule for JSTyposquatting {
+    fn id(&self) -> &str { "JS-AI-004" }
+    fn name(&self) -> &str { "Typosquatting - Package Name Similarity" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, tree: &LnAst, _code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let typo_patterns = [
+            "reqeust", "axois", "lodahs", "vu", "reacet", "expres",
+            "mogoose", "djanog", "flaks", "numpyy", "pandass",
+        ];
+        for imp in &tree.imports {
+            let module_lower = imp.module.to_lowercase();
+            for typo in typo_patterns {
+                if module_lower.contains(typo) {
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line: imp.start_line,
+                        column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        snippet: imp.module.clone(),
+                        problem: format!("Package '{}' may be a typosquatting attack.", imp.module),
+                        fix_hint: "Verify the package name is correct. Check the official package registry.".to_string(),
+                        auto_fix_available: false,
+                    });
+                    break;
+                }
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JS-AI-005: Fake API Mock
+// Severity: high
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JSFakeApiMock;
+
+impl LangRule for JSFakeApiMock {
+    fn id(&self) -> &str { "JS-AI-005" }
+    fn name(&self) -> &str { "Fake API Mock Without Error Handling" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        for call in &tree.calls {
+            if call.callee.contains("fetch") || call.callee.contains("axios") || call.callee.contains("request") {
+                let args_str = call.arguments.join(" ");
+                if !args_str.contains("try") && !args_str.contains("catch") && !args_str.contains(".then") {
+                    let line_text = code.lines().nth(call.start_line - 1).unwrap_or("");
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line: call.start_line,
+                        column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        snippet: line_text.trim().to_string(),
+                        problem: "HTTP request without error handling.".to_string(),
+                        fix_hint: "Add proper error handling with try/catch or .catch().".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JS-AI-006: Infinite Loop
+// Severity: medium | CWE-835
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JSInfiniteLoop;
+
+impl LangRule for JSInfiniteLoop {
+    fn id(&self) -> &str { "JS-AI-006" }
+    fn name(&self) -> &str { "Infinite Loop Pattern" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let while_re = Regex::new(r"(?m)^\s*while\s*\(\s*true\s*\)|(?m)^\s*while\s*\(\s*1\s*\)").unwrap();
+        for m in while_re.find_iter(code) {
+            let line = code[..m.start()].matches('\n').count() + 1;
+            let (start, end) = (0, 0);
+            let line_text = code.lines().nth(line - 1).unwrap_or("");
+            findings.push(LangFinding {
+                rule_id: self.id().to_string(),
+                severity: self.severity().to_string(),
+                line,
+                column: 0,
+                start_byte: start,
+                end_byte: end,
+                snippet: line_text.trim().to_string(),
+                problem: "while(true) loop without break statement detected.".to_string(),
+                fix_hint: "Ensure the loop has a break condition or use a different control flow.".to_string(),
+                auto_fix_available: false,
+            });
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JS-AI-007: Incomplete Error Handling
+// Severity: medium | CWE-248
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JSIncompleteErrorHandling;
+
+impl LangRule for JSIncompleteErrorHandling {
+    fn id(&self) -> &str { "JS-AI-007" }
+    fn name(&self) -> &str { "Incomplete Error Handling - Empty Catch" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let re = Regex::new(r"(?m)^\s*}?\s*catch\s*\([^)]+\)\s*\{\s*\}").unwrap();
+        for m in re.find_iter(code) {
+            let line = code[..m.start()].matches('\n').count() + 1;
+            let (start, end) = (0, 0);
+            let line_text = code.lines().nth(line - 1).unwrap_or("");
+            findings.push(LangFinding {
+                rule_id: self.id().to_string(),
+                severity: self.severity().to_string(),
+                line,
+                column: 0,
+                start_byte: start,
+                end_byte: end,
+                snippet: line_text.trim().to_string(),
+                problem: "try/catch with empty catch block. Errors are silently swallowed.".to_string(),
+                fix_hint: "Add error handling in catch block: log the error, show user feedback, or re-throw.".to_string(),
+                auto_fix_available: false,
+            });
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JS-AI-008: Missing CORS Error Handling
+// Severity: medium
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JSMissingCors;
+
+impl LangRule for JSMissingCors {
+    fn id(&self) -> &str { "JS-AI-008" }
+    fn name(&self) -> &str { "Missing CORS Error Handling" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        for call in &tree.calls {
+            if call.callee.contains("fetch") || call.callee.contains("axios") {
+                let line = call.start_line;
+                let after = &code[code.lines().take(line).collect::<Vec<_>>().join("\n").len()..];
+                let next_200 = &after[..after.len().min(300)];
+                let has_error_handling = next_200.contains("catch") || next_200.contains("if (response.ok)") || next_200.contains("if (!response.ok)");
+                if !has_error_handling {
+                    let line_text = code.lines().nth(line - 1).unwrap_or("");
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        snippet: line_text.trim().to_string(),
+                        problem: "HTTP request without CORS/network error handling.".to_string(),
+                        fix_hint: "Check response.ok and add catch for network errors.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JS-AI-009: Off-by-one in Array Access
+// Severity: medium | CWE-682
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JSOffByOneArrayAccess;
+
+impl LangRule for JSOffByOneArrayAccess {
+    fn id(&self) -> &str { "JS-AI-009" }
+    fn name(&self) -> &str { "Off-by-one in Array Access" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        // Pattern 1: array[array.length] - accessing element at invalid index
+        let length_patterns = [
+            (r#"\[\s*\w+\.length\s*\]"#, "Array access with .length as index (off-by-one)"),
+            (r#"\[\s*\w+\s*\+\s*1\s*\]"#, "Array access with index + 1 in loop (may exceed bounds)"),
+        ];
+
+        // Pattern 2: for loop with <= instead of < for array bounds
+        let loop_patterns = [
+            (r#"for\s*\(\s*let\s+\w+\s*=\s*0\s*;\s*\w+\s*<=\s*\w+\.length\s*;\s*\w+\s*\+\+\s*\)"#, "for loop using <= with .length (off-by-one: should use <)"),
+            (r#"for\s*\(\s*let\s+\w+\s*=\s*0\s*;\s*\w+\s*<=\s*\w+\.length\s*\+\s*1"#, "for loop with .length + 1 bound (off-by-one)"),
+        ];
+
+        for (pattern, desc) in &length_patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    let (start, end) = (0, 0);
+                    let line_text = code.lines().nth(line - 1).unwrap_or("");
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!("Off-by-one error: {}", desc),
+                        fix_hint: "Use < (not <=) for array bounds. Arrays are 0-indexed, so valid indices are 0 to length-1.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        for (pattern, desc) in &loop_patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    let (start, end) = (0, 0);
+                    let line_text = code.lines().nth(line - 1).unwrap_or("");
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!("Off-by-one in loop bounds: {}", desc),
+                        fix_hint: "Change <= to < in loop condition when iterating over array indices.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JS-AI-010: Inverted Authorization Check
+// Severity: medium | CWE-561
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JSInvertedAuthCheck;
+
+impl LangRule for JSInvertedAuthCheck {
+    fn id(&self) -> &str { "JS-AI-010" }
+    fn name(&self) -> &str { "Inverted Authorization Check" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        // Pattern 1: if (!user.isAdmin) followed by "Access denied" - inverted logic
+        let auth_patterns = [
+            (r#"if\s*\(\s*!\s*\w+\.is[A-Za-z]+\s*\)\s*\{[^}]*return\s+['""][^'""]*denied"#, "Inverted auth check: !isAdmin with access denied return"),
+            (r#"if\s*\(\s*!\s*\w+\.is[A-Za-z]+\s*\)\s*\{[^}]*throw\s+"#, "Inverted auth check: !isAdmin with throw"),
+            (r#"if\s*\(\s*!\s*hasPermission"#, "Inverted permission check pattern"),
+        ];
+
+        // Pattern 2: negation followed by successful operation (wrong negation)
+        let wrong_negation_patterns = [
+            (r#"if\s*\(\s*!\s*\w+\.is[A-Za-z]+\s*\)\s*\{[^}]*return\s+true"#, "Inverted: !isAuthorized returns true (should return false)"),
+            (r##"if\s*\(\s*!\s*\w+\.is[A-Za-z]+\s*\)\s*\{[^}]*\.send\s*\([^'""][^'""]*success"##, "Inverted: !auth sends success"),
+        ];
+
+        // Pattern 3: Check without negation followed by denial (missing negation)
+        let missing_negation_patterns = [
+            (r#"if\s*\(\s*\w+\.is[A-Za-z]+\s*\)\s*\{[^}]*return\s+['""][^'""]*denied"#, "Missing '!': isAuthorized followed by denied"),
+            (r#"if\s*\(\s*isAuthenticated\s*\)\s*\{[^}]*return\s+['""][^'""]*denied"#, "Missing '!': isAuthenticated followed by denied"),
+        ];
+
+        for (pattern, desc) in auth_patterns.iter().chain(wrong_negation_patterns.iter()) {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    let (start, end) = (0, 0);
+                    let line_text = code.lines().nth(line - 1).unwrap_or("");
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!("Inverted authorization check: {}", desc),
+                        fix_hint: "Verify the negation is correct. If checking for unauthorized access, deny access when the user is NOT authenticated.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        for (pattern, desc) in missing_negation_patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    let (start, end) = (0, 0);
+                    let line_text = code.lines().nth(line - 1).unwrap_or("");
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!("Possible missing negation: {}", desc),
+                        fix_hint: "If this is an authorization check, consider adding '!' before the condition.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// =============================================================================
 // END OF SECURITY RULES
 // =============================================================================
 
@@ -2397,5 +2769,13 @@ pub fn js_rules() -> Vec<Box<dyn LangRule>> {
         Box::new(JSSlopsquatting),
         Box::new(JSVerboseError),
         Box::new(JSAiGenComment),
+        Box::new(JSTyposquatting),
+        Box::new(JSFakeApiMock),
+        Box::new(JSInfiniteLoop),
+        Box::new(JSIncompleteErrorHandling),
+        Box::new(JSMissingCors),
+        // AI logic bug rules
+        Box::new(JSOffByOneArrayAccess),
+        Box::new(JSInvertedAuthCheck),
     ]
 }

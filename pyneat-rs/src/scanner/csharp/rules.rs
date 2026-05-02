@@ -1343,6 +1343,1145 @@ impl LangRule for CSharpAiGenComment {
 }
 
 // ---------------------------------------------------------------------------
+// CSHARP-015 — Mass Assignment / Over-posting (CWE-915)
+// OWASP A01:2021 | Medium severity
+// Detects: JsonConvert.DeserializeObject without [JsonIgnore]
+// ---------------------------------------------------------------------------
+
+pub struct CSharpMassAssignment;
+
+impl LangRule for CSharpMassAssignment {
+    fn id(&self) -> &str { "CSHARP-015" }
+    fn name(&self) -> &str { "Mass Assignment / Over-posting Vulnerability" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let mass_assign_patterns = [
+            (r"(?i)JsonConvert\.DeserializeObject\s*<", "JSON deserialization that can bind arbitrary properties"),
+            (r"(?i)JsonSerializer\.Deserialize\s*<", "System.Text.Json deserialization"),
+            (r"(?i)FromBody|FromForm", "ASP.NET model binding from request body/form"),
+            (r"(?i)\.Bind\(|\.Update\(|\.Patch\(", "EF Core binding methods that can mass-assign properties"),
+        ];
+
+        for (i, line) in code.lines().enumerate() {
+            for (pat, label) in &mass_assign_patterns {
+                if let Ok(re) = Regex::new(pat) {
+                    if re.is_match(line) {
+                        let (start, end) = get_line_offsets(code, i + 1);
+                        findings.push(LangFinding {
+                            rule_id: "CSHARP-015".to_string(),
+                            severity: "medium".to_string(),
+                            line: i + 1,
+                            column: 0,
+                            start_byte: start,
+                            end_byte: end,
+                            snippet: line.to_string(),
+                            problem: format!("Mass assignment risk: {}. Without [JsonIgnore] or [BindNever] attributes, attackers can set properties they shouldn't be able to modify.", label),
+                            fix_hint: "Use [JsonIgnore] on sensitive properties. Use [Bind(Include)] or [Bind(Exclude)] to explicitly allowlist/denylist properties. Consider using DTOs instead of domain entities.".to_string(),
+                            auto_fix_available: false,
+                        });
+                        break;
+                    }
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CSHARP-016 — Incorrect Authorization / Privilege Escalation (CWE-862, 863)
+// OWASP A01:2021 | High severity
+// Detects: Missing [Authorize] on controllers, incorrect role checks
+// ---------------------------------------------------------------------------
+
+pub struct CSharpIncorrectAuthorization;
+
+impl LangRule for CSharpIncorrectAuthorization {
+    fn id(&self) -> &str { "CSHARP-016" }
+    fn name(&self) -> &str { "Incorrect Authorization / Privilege Escalation" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        // Check for [Authorize] on class vs method level
+        let has_class_auth = Regex::new(r#"(?i)\[Authorize\]"#)
+            .map(|re| re.find_iter(code).any(|m| {
+                let line = code[..m.start()].matches('\n').count() + 1;
+                let class_line = code.lines().nth(line - 2.max(1)).unwrap_or("");
+                class_line.contains("class") || class_line.contains("Controller")
+            })).unwrap_or(false);
+
+        let has_method_auth = Regex::new(r#"(?i)\[Authorize\]"#)
+            .map(|re| re.is_match(code)).unwrap_or(false);
+
+        let has_web = code.contains("Controller") || code.contains("ApiController")
+            || code.contains("[HttpGet]") || code.contains("[HttpPost]");
+
+        if has_web && !has_class_auth && !has_method_auth {
+            for func in &tree.functions {
+                let name_lower = func.name.to_lowercase();
+                let sensitive = ["admin", "manage", "config", "settings", "user", "account",
+                    "role", "permission", "delete", "update", "create", "export", "payment"];
+                if sensitive.iter().any(|s| name_lower.contains(s)) {
+                    let (start, end) = get_line_offsets(code, func.start_line);
+                    let snippet = code.lines().nth(func.start_line - 1).unwrap_or("").to_string();
+                    findings.push(LangFinding {
+                        rule_id: "CSHARP-016".to_string(),
+                        severity: "high".to_string(),
+                        line: func.start_line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet,
+                        problem: "Sensitive method detected without any authorization attributes. This can allow unauthenticated access to privileged operations.".to_string(),
+                        fix_hint: "Add [Authorize] to the method or class. Use [Authorize(Roles = \"Admin\")] for role-based access. Consider policy-based authorization with IAuthorizationService.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        // Detect hardcoded role checks that can be bypassed
+        let bad_role_re = Regex::new(r##"(?i)User\.IsInRole\s*\(\s*['"][^'"]+['"]\s*\)"##).unwrap();
+        for m in bad_role_re.find_iter(code) {
+            let line = code[..m.start()].matches('\n').count() + 1;
+            let snippet = code.lines().nth(line - 1).unwrap_or("");
+            if !findings.iter().any(|f: &LangFinding| f.line == line) {
+                findings.push(LangFinding {
+                    rule_id: "CSHARP-016".to_string(),
+                    severity: "high".to_string(),
+                    line,
+                    column: 0,
+                    start_byte: 0,
+                    end_byte: 0,
+                    snippet: snippet.to_string(),
+                    problem: "Role-based authorization check found. Ensure this is backed by proper server-side validation, not just client-provided claims.".to_string(),
+                    fix_hint: "Always validate roles server-side with IAuthorizationService. Never rely solely on User.IsInRole() for critical decisions. Combine with policy-based authorization.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CSHARP-017 — Insecure Cookie Configuration (CWE-614)
+// OWASP A05:2021 | Medium severity
+// Detects: HttpCookie without Secure, HttpOnly flags
+// ---------------------------------------------------------------------------
+
+pub struct CSharpInsecureCookie;
+
+impl LangRule for CSharpInsecureCookie {
+    fn id(&self) -> &str { "CSHARP-017" }
+    fn name(&self) -> &str { "Insecure Cookie Configuration" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let cookie_patterns = [
+            (r"(?i)new\s+HttpCookie\s*\(", "HttpCookie created without security flags"),
+            (r"(?i)Response\.Cookies\.Add\s*\(", "Cookie added to response without security flags"),
+            (r"(?i)CookieOptions\s*\{[^}]*\}\s*(?!\.Secure)(?!\.HttpOnly)", "CookieOptions without Secure or HttpOnly"),
+        ];
+
+        let has_secure = Regex::new(r"(?i)\.Secure\s*=\s*true").unwrap();
+        let has_httponly = Regex::new(r"(?i)\.HttpOnly\s*=\s*true").unwrap();
+        let has_samesite = Regex::new(r"(?i)\.SameSite\s*=").unwrap();
+
+        for (i, line) in code.lines().enumerate() {
+            for (pat, label) in &cookie_patterns {
+                if let Ok(re) = Regex::new(pat) {
+                    if re.is_match(line) {
+                        let has_sec = has_secure.is_match(line);
+                        let has_httpon = has_httponly.is_match(line);
+                        let has_sames = has_samesite.is_match(line);
+
+                        if !has_sec || !has_httpon || !has_sames {
+                            let (start, end) = get_line_offsets(code, i + 1);
+                            let mut problems = vec![];
+                            if !has_sec { problems.push("Secure=false"); }
+                            if !has_httpon { problems.push("HttpOnly=false"); }
+                            if !has_sames { problems.push("SameSite not set"); }
+
+                            findings.push(LangFinding {
+                                rule_id: "CSHARP-017".to_string(),
+                                severity: "medium".to_string(),
+                                line: i + 1,
+                                column: 0,
+                                start_byte: start,
+                                end_byte: end,
+                                snippet: line.to_string(),
+                                problem: format!("Insecure cookie: {} — cookies without proper flags are vulnerable to XSS and CSRF attacks.", problems.join(", ")),
+                                fix_hint: "Set Secure=true, HttpOnly=true, and SameSite=SameSiteMode.Strict (or Lax). Use CookieOptions: new CookieOptions { Secure = Required, HttpOnly = true, SameSite = SameSiteMode.Strict }.".to_string(),
+                                auto_fix_available: false,
+                            });
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CSHARP-018 — Deserialization Gadget Chain (CWE-502)
+// OWASP A08:2021 | Critical severity
+// Detects: TypeNameHandling = Auto in Newtonsoft.Json
+// ---------------------------------------------------------------------------
+
+pub struct CSharpDeserializationGadget;
+
+impl LangRule for CSharpDeserializationGadget {
+    fn id(&self) -> &str { "CSHARP-018" }
+    fn name(&self) -> &str { "Deserialization Gadget Chain Vulnerability" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let patterns = [
+            (r"(?i)TypeNameHandling\s*=\s*TypeNameHandling\.Auto", "TypeNameHandling.Auto allows type resolution from JSON - gadget chain risk"),
+            (r"(?i)TypeNameHandling\s*=\s*TypeNameHandling\.All", "TypeNameHandling.All is extremely dangerous"),
+            (r"(?i)TypeNameHandling\s*=\s*TypeNameHandling\.Objects", "TypeNameHandling.Objects allows arbitrary type instantiation"),
+            (r"(?i)SerializationBinder\s*=\s*null", "Null SerializationBinder allows arbitrary type loading"),
+            (r"(?i)DefaultSettings\s*=.*TypeNameHandling", "Global JSON settings with TypeNameHandling enabled"),
+            (r"(?i)JsonSerializerSettings.*TypeNameHandling\.Auto", "JsonSerializerSettings with TypeNameHandling.Auto"),
+            (r"(?i)JavaScriptSerializer.*TypeResolver", "JavaScriptSerializer with custom TypeResolver is exploitable"),
+        ];
+
+        for (i, line) in code.lines().enumerate() {
+            for (pat, problem) in &patterns {
+                if let Ok(re) = Regex::new(pat) {
+                    if re.is_match(line) {
+                        let (start, end) = get_line_offsets(code, i + 1);
+                        findings.push(LangFinding {
+                            rule_id: "CSHARP-018".to_string(),
+                            severity: "critical".to_string(),
+                            line: i + 1,
+                            column: 0,
+                            start_byte: start,
+                            end_byte: end,
+                            snippet: line.to_string(),
+                            problem: problem.to_string(),
+                            fix_hint: "Always set TypeNameHandling = TypeNameHandling.None (default). If type info is needed, use a custom SerializationBinder with strict allowlist. Never deserialize untrusted input with type resolution enabled.".to_string(),
+                            auto_fix_available: false,
+                        });
+                        break;
+                    }
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CSHARP-019 — Regex Denial of Service (ReDoS) (CWE-1333)
+// Medium severity
+// Detects: Nested quantifiers in regex patterns, catastrophic backtracking
+// ---------------------------------------------------------------------------
+
+pub struct CSharpRegexDos;
+
+impl LangRule for CSharpRegexDos {
+    fn id(&self) -> &str { "CSHARP-019" }
+    fn name(&self) -> &str { "Regex Denial of Service (ReDoS) Pattern" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        // ReDoS patterns: nested quantifiers with overlapping alternatives
+        let redos_patterns = [
+            (r#"(?i)\([^)]*[+*][^)]*\)[+*]"#, "Nested quantifier: (a+)+ or (a*) * patterns cause catastrophic backtracking"),
+            (r#"(?i)\([^)]*[+*][^)]*\)\{[^}]*\}\s*[+*]"#, "Nested quantifier with range"),
+            (r#"(?i)\([^)]*\|[^)]*\)[+*]"#, "Alternation with quantifier can cause exponential backtracking"),
+            (r#"(?i)\.[+*]\.[+*]"#, "Overlapping greedy quantifiers"),
+            (r#"(?i)\([^)]*[^?]\)[+*]\s*\?"#, "Possessive quantifier or lazy overlap pattern"),
+        ];
+
+        let dangerous_keywords = ["email", "url", "uri", "host", "domain", "path", "input", "user",
+            "string", "text", "pattern", "regex", "validate", "check", "parse"];
+
+        for (i, line) in code.lines().enumerate() {
+            if line.contains("Regex") || line.contains("Matches") || line.contains("IsMatch") {
+                let line_lower = line.to_lowercase();
+                if dangerous_keywords.iter().any(|k| line_lower.contains(k)) {
+                    for (pat, problem) in &redos_patterns {
+                        if let Ok(re) = Regex::new(pat) {
+                            if re.is_match(line) {
+                                let (start, end) = get_line_offsets(code, i + 1);
+                                findings.push(LangFinding {
+                                    rule_id: "CSHARP-019".to_string(),
+                                    severity: "medium".to_string(),
+                                    line: i + 1,
+                                    column: 0,
+                                    start_byte: start,
+                                    end_byte: end,
+                                    snippet: line.to_string(),
+                                    problem: problem.to_string(),
+                                    fix_hint: "Refactor regex to avoid nested quantifiers. Use atomic groups or possessive quantifiers (C# doesn't support natively, but restructure). Consider using RegexOptions.Debug or a static analysis tool to verify no ReDoS. Benchmark with long inputs.".to_string(),
+                                    auto_fix_available: false,
+                                });
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CSHARP-020: XML External Entity (XXE)
+// Severity: high | CWE-611
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct CSharpXxe;
+
+impl LangRule for CSharpXxe {
+    fn id(&self) -> &str { "CSHARP-020" }
+    fn name(&self) -> &str { "XML External Entity (XXE)" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let dangerous = ["XmlDocument", "XmlReader", "XDocument.Load"];
+        for call in &tree.calls {
+            if dangerous.iter().any(|d| call.callee.contains(d)) {
+                let line_text = code.lines().nth(call.start_line - 1).unwrap_or_default();
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: self.severity().to_string(),
+                    line: call.start_line,
+                    column: 0,
+                    start_byte: 0,
+                    end_byte: 0,
+                    snippet: line_text.trim().to_string(),
+                    problem: "XML parser without XXE protection.".to_string(),
+                    fix_hint: "Disable DTD processing: XmlReaderSettings.DtdProcessing = DtdProcessing.Prohibit.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CSHARP-021: SQL Injection via EF Raw SQL
+// Severity: critical | CWE-89
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct CSharpSqlInjectionEF;
+
+impl LangRule for CSharpSqlInjectionEF {
+    fn id(&self) -> &str { "CSHARP-021" }
+    fn name(&self) -> &str { "SQL Injection via EF Raw SQL" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let sql_funcs = ["ExecuteSqlRaw", "ExecuteSqlCommand", "FromSqlRaw", "SqlQuery"];
+        for call in &tree.calls {
+            if sql_funcs.iter().any(|f| call.callee.contains(f)) {
+                let args_str = call.arguments.join(" ");
+                if args_str.contains("+") || args_str.contains("string.Format") || args_str.contains("$\"") {
+                    let line_text = code.lines().nth(call.start_line - 1).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line: call.start_line,
+                        column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        snippet: line_text.trim().to_string(),
+                        problem: "EF raw SQL query with string interpolation. SQL injection risk.".to_string(),
+                        fix_hint: "Use parameterized queries: ExecuteSqlRaw(\"SELECT * FROM Users WHERE Id = {0}\", userId);.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CSHARP-022: Path Traversal
+// Severity: high | CWE-22
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct CSharpPathTraversalRaw;
+
+impl LangRule for CSharpPathTraversalRaw {
+    fn id(&self) -> &str { "CSHARP-022" }
+    fn name(&self) -> &str { "Path Traversal Vulnerability" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let dangerous = ["File.ReadAllText", "File.ReadLines", "File.Open", "File.Copy", "Directory.GetFiles"];
+        for call in &tree.calls {
+            if dangerous.iter().any(|d| call.callee.contains(d)) {
+                let args_str = call.arguments.join(" ");
+                if args_str.contains("Request") || args_str.contains("query") || args_str.contains("param") {
+                    let line_text = code.lines().nth(call.start_line - 1).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line: call.start_line,
+                        column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        snippet: line_text.trim().to_string(),
+                        problem: "File operation with user-controlled path. Path traversal risk.".to_string(),
+                        fix_hint: "Validate paths: Path.GetFullPath(), Path.Combine() with a base directory, reject '..'.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CSHARP-023: Insecure Random Number Generator
+// Severity: medium | CWE-338
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct CSharpInsecureRandom;
+
+impl LangRule for CSharpInsecureRandom {
+    fn id(&self) -> &str { "CSHARP-023" }
+    fn name(&self) -> &str { "Insecure Random Number Generator" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        for call in &tree.calls {
+            if call.callee.contains("new Random()") || call.callee.contains("Random()") {
+                let line_text = code.lines().nth(call.start_line - 1).unwrap_or_default();
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: self.severity().to_string(),
+                    line: call.start_line,
+                    column: 0,
+                    start_byte: 0,
+                    end_byte: 0,
+                    snippet: line_text.trim().to_string(),
+                    problem: "System.Random is predictable and not suitable for security purposes.".to_string(),
+                    fix_hint: "Use RandomNumberGenerator.GetInt32() or System.Security.Cryptography.RandomNumberGenerator.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CSHARP-024: Hardcoded Connection Strings
+// Severity: high | CWE-798
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct CSharpHardcodedConnectionString;
+
+impl LangRule for CSharpHardcodedConnectionString {
+    fn id(&self) -> &str { "CSHARP-024" }
+    fn name(&self) -> &str { "Hardcoded Connection Strings" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        for call in &tree.calls {
+            if call.callee.contains("ConfigurationManager") || call.callee.contains("ConnectionStrings") {
+                let args_str = call.arguments.join(" ");
+                if !args_str.contains("env") && !args_str.contains("Environment") {
+                    let line_text = code.lines().nth(call.start_line - 1).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line: call.start_line,
+                        column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        snippet: line_text.trim().to_string(),
+                        problem: "Connection string may be hardcoded in source code.".to_string(),
+                        fix_hint: "Use ConfigurationManager with external config or environment variables.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CSHARP-025: Weak Cryptography
+// Severity: high | CWE-327
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct CSharpWeakCrypto;
+
+impl LangRule for CSharpWeakCrypto {
+    fn id(&self) -> &str { "CSHARP-025" }
+    fn name(&self) -> &str { "Weak Cryptography Usage" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let dangerous = ["DES", "RC2", "RC4", "MD5", "SHA1", "RijndaelManaged"];
+        for call in &tree.calls {
+            let args_str = call.arguments.join(" ");
+            if dangerous.iter().any(|d| call.callee.contains(d) || args_str.contains(d)) {
+                let line_text = code.lines().nth(call.start_line - 1).unwrap_or_default();
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: self.severity().to_string(),
+                    line: call.start_line,
+                    column: 0,
+                    start_byte: 0,
+                    end_byte: 0,
+                    snippet: line_text.trim().to_string(),
+                    problem: "Weak cryptographic algorithm (DES/RC4/MD5/SHA1) detected.".to_string(),
+                    fix_hint: "Use AES-256 (Aes.Create()) or SHA-256 for hashing.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CSHARP-026: RCE via Deserialization
+// Severity: critical | CWE-94
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct CSharpDeserializationRCE;
+
+impl LangRule for CSharpDeserializationRCE {
+    fn id(&self) -> &str { "CSHARP-026" }
+    fn name(&self) -> &str { "Remote Code Execution via Deserialization" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let dangerous = ["BinaryFormatter", "LosFormatter", "ObjectStateFormatter", "SoapFormatter", "NetDataContractSerializer"];
+        for call in &tree.calls {
+            if dangerous.iter().any(|d| call.callee.contains(d)) {
+                let line_text = code.lines().nth(call.start_line - 1).unwrap_or_default();
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: self.severity().to_string(),
+                    line: call.start_line,
+                    column: 0,
+                    start_byte: 0,
+                    end_byte: 0,
+                    snippet: line_text.trim().to_string(),
+                    problem: "Dangerous deserializer (BinaryFormatter/SoapFormatter) used. Can lead to RCE.".to_string(),
+                    fix_hint: "Use System.Text.Json or Newtonsoft.Json with TypeNameHandling = None.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CSHARP-027: Open Redirect
+// Severity: medium | CWE-601
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct CSharpOpenRedirectRaw;
+
+impl LangRule for CSharpOpenRedirectRaw {
+    fn id(&self) -> &str { "CSHARP-027" }
+    fn name(&self) -> &str { "Open Redirect Vulnerability" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let redirect_methods = ["Redirect", "RedirectToAction", "RedirectToRoute", "PermanentRedirect"];
+        for call in &tree.calls {
+            if redirect_methods.iter().any(|m| call.callee.contains(m)) {
+                let args_str = call.arguments.join(" ");
+                if args_str.contains("Request") || args_str.contains("query") || args_str.contains("returnUrl") || args_str.contains("url") {
+                    let line_text = code.lines().nth(call.start_line - 1).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line: call.start_line,
+                        column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        snippet: line_text.trim().to_string(),
+                        problem: "Redirect to user-controlled URL. Open redirect vulnerability.".to_string(),
+                        fix_hint: "Validate redirect URLs against an allowlist of permitted domains.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CSHARP-028: SSRF - Internal IPs
+// Severity: medium | CWE-918
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct CSharpSsrf;
+
+impl LangRule for CSharpSsrf {
+    fn id(&self) -> &str { "CSHARP-028" }
+    fn name(&self) -> &str { "Server-Side Request Forgery (SSRF)" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let http_funcs = ["HttpClient", "WebClient", "WebRequest", "HttpWebRequest", "HttpRequestMessage"];
+        for call in &tree.calls {
+            if http_funcs.iter().any(|f| call.callee.contains(f)) {
+                let args_str = call.arguments.join(" ");
+                if args_str.contains("Request") || args_str.contains("query") || args_str.contains("url") {
+                    let line_text = code.lines().nth(call.start_line - 1).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line: call.start_line,
+                        column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        snippet: line_text.trim().to_string(),
+                        problem: "HTTP request with user-controlled URL. SSRF vulnerability.".to_string(),
+                        fix_hint: "Validate and allowlist URLs. Block internal IP ranges.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CSHARP-AI-005: AI Hardcoded Connection Strings
+// Severity: high | CWE-798
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct CSharpAiHardcodedConnectionString;
+
+impl LangRule for CSharpAiHardcodedConnectionString {
+    fn id(&self) -> &str { "CSHARP-AI-005" }
+    fn name(&self) -> &str { "AI: Hardcoded Connection Strings" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        for call in &tree.calls {
+            if call.callee.contains("ConfigurationManager.ConnectionStrings") || call.callee.contains("SqlConnection") {
+                let args_str = call.arguments.join(" ");
+                if args_str.contains("password") || args_str.contains("pwd") || args_str.contains("Server=") {
+                    let line_text = code.lines().nth(call.start_line - 1).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line: call.start_line,
+                        column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        snippet: line_text.trim().to_string(),
+                        problem: "AI-generated code may contain hardcoded connection strings.".to_string(),
+                        fix_hint: "Store connection strings in configuration files with proper access controls.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CSHARP-AI-006: AI SQL Injection via String Interpolation
+// Severity: critical | CWE-89
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct CSharpAiSqlInjection;
+
+impl LangRule for CSharpAiSqlInjection {
+    fn id(&self) -> &str { "CSHARP-AI-006" }
+    fn name(&self) -> &str { "AI: SQL Injection via String Interpolation" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let sql_funcs = ["ExecuteSqlRaw", "FromSqlRaw", "SqlQuery", "ExecuteSqlCommandAsync"];
+        for call in &tree.calls {
+            if sql_funcs.iter().any(|f| call.callee.contains(f)) {
+                let args_str = call.arguments.join(" ");
+                if args_str.contains("$\"") || args_str.contains("string.Format") {
+                    let line_text = code.lines().nth(call.start_line - 1).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line: call.start_line,
+                        column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        snippet: line_text.trim().to_string(),
+                        problem: "AI-generated SQL query with string interpolation.".to_string(),
+                        fix_hint: "Use parameterized queries: ExecuteSqlRaw(\"...{0}\", param);.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CSHARP-AI-007: AI Command Injection
+// Severity: critical | CWE-78
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct CSharpAiCommandInjection;
+
+impl LangRule for CSharpAiCommandInjection {
+    fn id(&self) -> &str { "CSHARP-AI-007" }
+    fn name(&self) -> &str { "AI: Command Injection - Process.Start()" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        for call in &tree.calls {
+            if call.callee.contains("Process.Start") || call.callee.contains("Shell.Execute") {
+                let args_str = call.arguments.join(" ");
+                if args_str.contains("Request") || args_str.contains("query") || args_str.contains("param") {
+                    let line_text = code.lines().nth(call.start_line - 1).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line: call.start_line,
+                        column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        snippet: line_text.trim().to_string(),
+                        problem: "AI-generated command execution with user-controlled input.".to_string(),
+                        fix_hint: "Validate input against allowlist. Use ProcessStartInfo with arguments separately.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CSHARP-AI-008: AI XXE via XmlDocument
+// Severity: high | CWE-611
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct CSharpAiXxe;
+
+impl LangRule for CSharpAiXxe {
+    fn id(&self) -> &str { "CSHARP-AI-008" }
+    fn name(&self) -> &str { "AI: XXE via XmlDocument" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        for call in &tree.calls {
+            if call.callee.contains("XmlDocument") || call.callee.contains("XDocument.Load") {
+                let line_text = code.lines().nth(call.start_line - 1).unwrap_or_default();
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: self.severity().to_string(),
+                    line: call.start_line,
+                    column: 0,
+                    start_byte: 0,
+                    end_byte: 0,
+                    snippet: line_text.trim().to_string(),
+                    problem: "AI-generated XML parser without XXE protection.".to_string(),
+                    fix_hint: "Disable DTD: xmlDoc.XmlResolver = null; for XDocument: use Load with XmlReader settings.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CSHARP-AI-009: AI Insecure Deserialization
+// Severity: critical | CWE-502
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct CSharpAiInsecureDeserialization;
+
+impl LangRule for CSharpAiInsecureDeserialization {
+    fn id(&self) -> &str { "CSHARP-AI-009" }
+    fn name(&self) -> &str { "AI: Insecure Deserialization - BinaryFormatter" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let dangerous = ["BinaryFormatter", "LosFormatter", "SoapFormatter"];
+        for call in &tree.calls {
+            if dangerous.iter().any(|d| call.callee.contains(d)) {
+                let line_text = code.lines().nth(call.start_line - 1).unwrap_or_default();
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: self.severity().to_string(),
+                    line: call.start_line,
+                    column: 0,
+                    start_byte: 0,
+                    end_byte: 0,
+                    snippet: line_text.trim().to_string(),
+                    problem: "AI-generated code uses dangerous BinaryFormatter. Can lead to RCE.".to_string(),
+                    fix_hint: "Use System.Text.Json for serialization. Never deserialize untrusted data.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CSHARP-AI-010: AI Path Traversal
+// Severity: high | CWE-22
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct CSharpAiPathTraversal;
+
+impl LangRule for CSharpAiPathTraversal {
+    fn id(&self) -> &str { "CSHARP-AI-010" }
+    fn name(&self) -> &str { "AI: Path Traversal Vulnerability" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let file_ops = ["File.ReadAllText", "File.Copy", "File.Delete", "Directory.GetFiles"];
+        for call in &tree.calls {
+            if file_ops.iter().any(|f| call.callee.contains(f)) {
+                let args_str = call.arguments.join(" ");
+                if args_str.contains("Request") || args_str.contains("query") || args_str.contains("id") {
+                    let line_text = code.lines().nth(call.start_line - 1).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line: call.start_line,
+                        column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        snippet: line_text.trim().to_string(),
+                        problem: "AI-generated file operation with user-controlled path.".to_string(),
+                        fix_hint: "Validate and sanitize file paths. Use Path.GetFullPath() and reject '..'.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ---------------------------------------------------------------------------
+// CSHARP-029 — SSRF Deep Check (CWE-918)
+// OWASP A10:2021 | High severity
+// Detects HTTP requests with user-controlled URLs and internal IP access
+// ---------------------------------------------------------------------------
+pub struct CSharpSsrfDeep;
+
+impl LangRule for CSharpSsrfDeep {
+    fn id(&self) -> &str { "CSHARP-029" }
+    fn name(&self) -> &str { "SSRF - Deep Check with Internal IP Detection" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let http_funcs = [
+            "HttpClient.GetAsync",
+            "HttpClient.PostAsync",
+            "HttpClient.GetStringAsync",
+            "HttpClient.GetByteArrayAsync",
+            "HttpClient.PutAsync",
+            "HttpClient.DeleteAsync",
+            "HttpClient.SendAsync",
+            "WebClient.DownloadString",
+            "WebClient.DownloadData",
+            "WebClient.OpenRead",
+            "WebClient.UploadString",
+            "HttpWebRequest.Create",
+            "WebRequest.Create",
+            "RestClient.Get",
+            "RestClient.Post",
+            "RestClient.Put",
+            "RestClient.Delete",
+            "HttpClientFactory.CreateClient",
+            "IHttpClientFactory.CreateBuilder",
+        ];
+
+        let user_input_patterns = [
+            "Request.Query",
+            "Request.Params",
+            "Request[\"",
+            "Request.Form",
+            "routeData.Values",
+            "queryString",
+            "Request.Url",
+            "Request.Path",
+            "Request.Headers",
+            "Request.ServerVariables",
+        ];
+
+        let internal_ip_patterns = [
+            "169.254.169.254",
+            "127.0.0.1",
+            "localhost",
+            "0.0.0.0",
+            "::1",
+            "metadata.google.internal",
+            "metadata.azure.com",
+        ];
+
+        for call in &tree.calls {
+            if http_funcs.iter().any(|f| call.callee.contains(f)) {
+                let args_str = call.arguments.join(" ");
+                let line_text = code.lines().nth(call.start_line - 1).unwrap_or_default();
+
+                let has_user_input = user_input_patterns.iter().any(|p| args_str.contains(p));
+                let has_internal_ip = internal_ip_patterns.iter().any(|ip| args_str.contains(ip) || line_text.contains(ip));
+
+                if has_internal_ip {
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: "high".to_string(),
+                        line: call.start_line,
+                        column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        snippet: line_text.trim().to_string(),
+                        problem: "HTTP request to internal IP address detected. This could allow SSRF attacks to access cloud metadata services (169.254.169.254) or internal infrastructure.".to_string(),
+                        fix_hint: "Block internal IP ranges. Validate URLs against an allowlist of permitted external domains. Never allow direct access to cloud metadata endpoints.".to_string(),
+                        auto_fix_available: false,
+                    });
+                } else if has_user_input {
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: "high".to_string(),
+                        line: call.start_line,
+                        column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        snippet: line_text.trim().to_string(),
+                        problem: "HTTP request with user-controlled URL detected. SSRF vulnerability.".to_string(),
+                        fix_hint: "Validate and allowlist URLs. Block internal IP ranges (127.0.0.1, 169.254.169.254, etc.). Use Uri.TryCreate() to parse and validate the URL before making requests.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        // Also check for internal IPs in string literals with HTTP-related keywords
+        let ip_re = Regex::new(r#"(?i)["']https?://[^"']*(?:169\.254\.169\.254|127\.0\.0\.1|localhost)["']"#).unwrap();
+        for (i, line) in code.lines().enumerate() {
+            if ip_re.is_match(line) && !findings.iter().any(|f: &LangFinding| f.line == i + 1) {
+                let (start, end) = get_line_offsets(code, i + 1);
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: "high".to_string(),
+                    line: i + 1,
+                    column: 0,
+                    start_byte: start,
+                    end_byte: end,
+                    snippet: line.to_string(),
+                    problem: "URL with internal IP or localhost detected in code. SSRF risk.".to_string(),
+                    fix_hint: "Remove hardcoded internal URLs. Use external domain allowlists for any dynamic URL construction.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ---------------------------------------------------------------------------
+// CSHARP-030 — Weak JWT Verification (CWE-347)
+// Critical severity
+// Detects insecure JWT token validation patterns
+// ---------------------------------------------------------------------------
+pub struct CSharpWeakJwt;
+
+impl LangRule for CSharpWeakJwt {
+    fn id(&self) -> &str { "CSHARP-030" }
+    fn name(&self) -> &str { "Weak JWT Token Verification" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        // Check for JwtSecurityTokenHandler.ValidateToken with weak parameters
+        let weak_validation_patterns = [
+            (r"ValidateToken\s*\([^,]+,\s*null\s*,", "ValidateToken called with null validation parameters - no signature/issuer/audience validation"),
+            (r"ValidateIssuer\s*=\s*false", "Issuer validation disabled in JWT"),
+            (r"ValidateAudience\s*=\s*false", "Audience validation disabled in JWT"),
+            (r"ValidateLifetime\s*=\s*false", "Token expiration validation disabled"),
+            (r"ValidateIssuerSigningKey\s*=\s*false", "Signing key validation disabled - accepts any signature"),
+            (r"RequireExpirationTime\s*=\s*false", "Expiration time not required"),
+            (r"RequireSignedTokens\s*=\s*false", "Signed tokens not required"),
+        ];
+
+        for (i, line) in code.lines().enumerate() {
+            // Check for JwtSecurityTokenHandler
+            if line.contains("JwtSecurityTokenHandler") || line.contains("ValidateToken") {
+                for (pat, problem) in &weak_validation_patterns {
+                    if let Ok(re) = Regex::new(pat) {
+                        if re.is_match(line) {
+                            let (start, end) = get_line_offsets(code, i + 1);
+                            findings.push(LangFinding {
+                                rule_id: self.id().to_string(),
+                                severity: "critical".to_string(),
+                                line: i + 1,
+                                column: 0,
+                                start_byte: start,
+                                end_byte: end,
+                                snippet: line.to_string(),
+                                problem: problem.to_string(),
+                                fix_hint: "Enable all JWT validation: ValidateIssuer=true, ValidateAudience=true, ValidateLifetime=true, ValidateIssuerSigningKey=true. Use a proper key validation routine.".to_string(),
+                                auto_fix_available: false,
+                            });
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Check for weak/hardcoded signing keys
+            if line.contains("SymmetricSecurityKey") || line.contains("SigningKey") {
+                let weak_key_patterns = [
+                    (r"new\s+byte\[0\]", "Empty byte array used as signing key"),
+                    (r"new\s+byte\[\s*8\s*\]", "Only 8 bytes for symmetric key - too short"),
+                    (r"new\s+byte\[\s*16\s*\]", "16 bytes may be insufficient for HS256"),
+                    (r#""[^"]{0,32}""#, "Short hardcoded string used as key"),
+                    (r"(?i)your-?secret|placeholder|changeme|temp|test", "Placeholder or test key detected"),
+                ];
+
+                for (pat, problem) in &weak_key_patterns {
+                    if let Ok(re) = Regex::new(pat) {
+                        if re.is_match(line) {
+                            let (start, end) = get_line_offsets(code, i + 1);
+                            findings.push(LangFinding {
+                                rule_id: self.id().to_string(),
+                                severity: "critical".to_string(),
+                                line: i + 1,
+                                column: 0,
+                                start_byte: start,
+                                end_byte: end,
+                                snippet: line.to_string(),
+                                problem: problem.to_string(),
+                                fix_hint: "Use a cryptographically strong key of at least 256 bits (32 bytes) for HS256. Store keys securely in environment variables or a secrets manager. Never use placeholder or short keys.".to_string(),
+                                auto_fix_available: false,
+                            });
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check calls for JwtSecurityTokenHandler.ValidateToken
+        for call in &tree.calls {
+            if call.callee.contains("ValidateToken") {
+                let args_str = call.arguments.join(" ");
+                let line_text = code.lines().nth(call.start_line - 1).unwrap_or_default();
+
+                // Very weak: null validation parameters
+                if args_str.contains("null") {
+                    let has_weak_params = code.lines()
+                        .skip(call.start_line.saturating_sub(5))
+                        .take(10)
+                        .any(|l| l.contains("ValidateIssuer = false")
+                            || l.contains("ValidateAudience = false")
+                            || l.contains("ValidateLifetime = false")
+                            || l.contains("ValidateIssuerSigningKey = false"));
+
+                    if has_weak_params && !findings.iter().any(|f: &LangFinding| f.line == call.start_line) {
+                        findings.push(LangFinding {
+                            rule_id: self.id().to_string(),
+                            severity: "critical".to_string(),
+                            line: call.start_line,
+                            column: 0,
+                            start_byte: 0,
+                            end_byte: 0,
+                            snippet: line_text.trim().to_string(),
+                            problem: "JWT validation with disabled security checks detected. Tokens can be forged.".to_string(),
+                            fix_hint: "Enable all validation parameters. Use Microsoft.IdentityModel.Tokens.TokenValidationParameters with proper issuer, audience, and lifetime validation.".to_string(),
+                            auto_fix_available: false,
+                        });
+                    }
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 
@@ -1368,5 +2507,29 @@ pub fn csharp_rules() -> Vec<Box<dyn LangRule>> {
         Box::new(CSharpVerboseError),
         Box::new(CSharpMissingInputValidation),
         Box::new(CSharpAiGenComment),
+        // New rules CSHARP-015 to CSHARP-019
+        Box::new(CSharpMassAssignment),
+        Box::new(CSharpIncorrectAuthorization),
+        Box::new(CSharpInsecureCookie),
+        Box::new(CSharpDeserializationGadget),
+        Box::new(CSharpRegexDos),
+        // New rules CSHARP-020 to CSHARP-028 and AI rules
+        Box::new(CSharpXxe),
+        Box::new(CSharpSqlInjectionEF),
+        Box::new(CSharpPathTraversalRaw),
+        Box::new(CSharpInsecureRandom),
+        Box::new(CSharpHardcodedConnectionString),
+        Box::new(CSharpWeakCrypto),
+        Box::new(CSharpDeserializationRCE),
+        Box::new(CSharpOpenRedirectRaw),
+        Box::new(CSharpSsrf),
+        Box::new(CSharpSsrfDeep),
+        Box::new(CSharpWeakJwt),
+        Box::new(CSharpAiHardcodedConnectionString),
+        Box::new(CSharpAiSqlInjection),
+        Box::new(CSharpAiCommandInjection),
+        Box::new(CSharpAiXxe),
+        Box::new(CSharpAiInsecureDeserialization),
+        Box::new(CSharpAiPathTraversal),
     ]
 }

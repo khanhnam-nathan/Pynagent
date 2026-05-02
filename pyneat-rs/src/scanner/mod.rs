@@ -27,6 +27,11 @@ pub mod csharp;
 pub mod php;
 pub mod go;
 pub mod ruby;
+pub mod enterprise;
+pub mod taint;
+pub mod taint_lang_rule;
+pub mod supplychain;
+pub mod ml;
 
 pub use tree_sitter::ParseError;
 pub use rust::RustScanner;
@@ -36,6 +41,8 @@ pub use java::JavaScanner;
 pub use csharp::CSharpScanner;
 pub use php::PhpScanner;
 pub use ruby::RubyScanner;
-pub use base::{find_calls, has_import, LanguageScanner, LanguageRegistry, LangRule, LangFinding};
-pub use ln_ast::{LnAst, TODO_MARKERS};
-pub use multilang::Language;
+pub use taint_lang_rule::TaintLangScanner;
+#[allow(unused)]
+pub use base::{LanguageScanner, LanguageRegistry, LangRule, LangFinding, Language};
+#[allow(unused)]
+pub use ln_ast::LnAst;

@@ -16,11 +16,25 @@
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::rules::base::{extract_snippet, Fix, Finding, Rule, Severity};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use tree_sitter::Tree;
 
 /// SEC-070: Docker Vulnerability Rule
 ///
 /// CWE-1104: Use of Unmaintained Third-Party Components
+static SCAN_PATTERNS: Lazy<Vec<&'static str>> = Lazy::new(|| vec![
+    r"(?i)trivy",
+    r"(?i)grype",
+    r"(?i)anchore",
+    r"(?i)snyk",
+    r"(?i)clair",
+    r"(?i)vulnerability\s*scan",
+]);
+static FROM_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"FROM\s+[^:]+:[^\s]+"#).unwrap()
+});
+
 pub struct DockerVulnerabilityRule;
 
 impl Rule for DockerVulnerabilityRule {
@@ -35,35 +49,24 @@ impl Rule for DockerVulnerabilityRule {
                              code.contains("docker-compose") ||
                              code.contains("FROM");
 
-        let has_scan = [
-            r"(?i)trivy",
-            r"(?i)grype",
-            r"(?i)anchore",
-            r"(?i)snyk",
-            r"(?i)clair",
-            r"(?i)vulnerability\s*scan",
-        ];
-
-        let scan_found = has_scan.iter().any(|p| {
-            regex::Regex::new(p).map(|re| re.is_match(code)).unwrap_or(false)
+        let scan_found = SCAN_PATTERNS.iter().any(|p| {
+            Regex::new(p).map(|re| re.is_match(code)).unwrap_or(false)
         });
 
         if is_docker_file && !scan_found {
-            if let Ok(re) = regex::Regex::new(r#"FROM\s+[^:]+:[^\s]+"#) {
-                for m in re.find_iter(code) {
-                    let snippet = extract_snippet(code, m.start(), m.end());
-                    findings.push(Finding {
-                        rule_id: "SEC-070".to_string(),
-                        severity: Severity::Medium.as_str().to_string(),
-                        cwe_id: Some("CWE-1104".to_string()),
-                        cvss_score: Some(5.3),
-                        owasp_id: Some("A06:2021".to_string()),
-                        start: m.start(), end: m.end(), snippet,
-                        problem: "Docker configuration without vulnerability scanning".to_string(),
-                        fix_hint: "Add vulnerability scanning to Docker workflow: 'docker scan IMAGE' or use Trivy/Grype in CI/CD.".to_string(),
-                        auto_fix_available: false,
-                    });
-                }
+            for m in FROM_RE.find_iter(code) {
+                let snippet = extract_snippet(code, m.start(), m.end());
+                findings.push(Finding {
+                    rule_id: "SEC-070".to_string(),
+                    severity: Severity::Medium.as_str().to_string(),
+                    cwe_id: Some("CWE-1104".to_string()),
+                    cvss_score: Some(5.3),
+                    owasp_id: Some("A06:2021".to_string()),
+                    start: m.start(), end: m.end(), snippet,
+                    problem: "Docker configuration without vulnerability scanning".to_string(),
+                    fix_hint: "Add vulnerability scanning to Docker workflow: 'docker scan IMAGE' or use Trivy/Grype in CI/CD.".to_string(),
+                    auto_fix_available: false,
+                });
             }
         }
 

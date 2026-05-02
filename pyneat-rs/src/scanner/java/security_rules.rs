@@ -17,8 +17,9 @@
 
 use std::collections::HashSet;
 
-use crate::scanner::ln_ast::{LnAst, LnCall};
-use crate::scanner::base::{find_calls, has_import, LangRule, LangFinding};
+use crate::scanner::ln_ast::LnAst;
+use crate::scanner::base::{has_import, LangRule, LangFinding};
+use regex::Regex;
 
 /// Helper: get line byte offsets (0-indexed lines, 0-indexed bytes).
 fn get_line_offsets(code: &str, line: usize) -> (usize, usize) {
@@ -44,6 +45,16 @@ fn get_line_offsets(code: &str, line: usize) -> (usize, usize) {
         line_end = code.len();
     }
     (line_start, line_end)
+}
+
+/// Helper: get line number from byte offset (1-indexed).
+fn get_line_from_byte(code: &str, byte: usize) -> usize {
+    code[..byte].matches('\n').count() + 1
+}
+
+/// Helper: get the text content of a specific line (1-indexed).
+fn get_line_text(code: &str, line: usize) -> Option<String> {
+    code.lines().nth(line.saturating_sub(1)).map(|l| l.to_string())
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1827,40 +1838,6 @@ impl LangRule for JavaYamlDeserialization {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Registry function
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// All Java security rules.
-pub fn java_security_rules() -> Vec<Box<dyn LangRule>> {
-    vec![
-        Box::new(JavaDeserializationRCE),
-        Box::new(JavaSqlInjection),
-        Box::new(JavaXXE),
-        Box::new(JavaJndiInjection),
-        Box::new(JavaSSRF),
-        Box::new(JavaSpELInjection),
-        Box::new(JavaHardcodedSecrets),
-        Box::new(JavaWeakCrypto),
-        Box::new(JavaCommandInjection),
-        Box::new(JavaPathTraversal),
-        Box::new(JavaSpringSecurityMisconfig),
-        Box::new(JavaLogInjection),
-        Box::new(JavaLdapInjection),
-        Box::new(JavaUnsafeReflection),
-        Box::new(JavaMassAssignment),
-        Box::new(JavaTemplateInjection),
-        Box::new(JavaXMLDecoder),
-        Box::new(JavaTypeConfusion),
-        Box::new(JavaInsecureCookie),
-        Box::new(JavaYamlDeserialization),
-        Box::new(JavaSlopsquatting),
-        Box::new(JavaVerboseError),
-        Box::new(JavaMissingInputValidation),
-        Box::new(JavaAiGenComment),
-    ]
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // JAVA-AI-001: Slopsquatting (AI-Hallucinated Dependencies)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -2039,3 +2016,1622 @@ impl LangRule for JavaAiGenComment {
 
     fn supports_auto_fix(&self) -> bool { false }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-SEC-021: Cross-Site Scripting / XSS (CWE-79)
+// Severity: critical | OWASP A03:2021
+// response.getWriter().write(), out.println() with user data
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaXss;
+
+impl LangRule for JavaXss {
+    fn id(&self) -> &str { "JAVA-SEC-021" }
+    fn name(&self) -> &str { "Cross-Site Scripting (XSS)" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let xss_patterns = [
+            (r##"response\.getWriter\(\)\.write\s*\("##, "Direct write to response with potentially user-controlled data"),
+            (r##"out\.print(?:ln)?\s*\(\s*[^)]*(?:request|param|body|session)\."##, "Direct output of user-controlled data"),
+            (r##"\${[^}]*(?:param|request|body)[^}]*}"##, "JSP EL expression with user input in output"),
+            (r##"<%=\s*[^%]*request\."##, "JSP scriptlet outputting user data"),
+            (r##"\.setContentType\s*\(\s*['\"]text/html['\"]\s*\).*?\.write"##, "HTML response writing with user data"),
+        ];
+
+        let xss_sinks: HashSet<&str> = [
+            "getWriter", "println", "print", "write",
+            "getOutputStream", "setContentType",
+        ].into_iter().collect();
+
+        for call in &tree.calls {
+            if xss_sinks.contains(call.callee.as_str()) {
+                let has_user_input = call.arguments.iter().any(|a| {
+                    let user_srcs = ["request", "param", "body", "session", "header"];
+                    user_srcs.iter().any(|s| a.to_lowercase().contains(s))
+                });
+
+                if has_user_input {
+                    let (start, end) = get_line_offsets(code, call.start_line);
+                    let line_text = code.lines().nth(call.start_line - 1).unwrap_or("");
+                    findings.push(LangFinding {
+                        rule_id: "JAVA-SEC-021".to_string(),
+                        severity: "critical".to_string(),
+                        line: call.start_line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: "Cross-Site Scripting (XSS): user-controlled data is written directly to HTTP response without encoding.".to_string(),
+                        fix_hint: "Encode user output with ESAPI.encoder().encodeForHTML() or use a template engine with auto-escaping (Thymeleaf, Mustache). Never reflect raw user input in HTML responses.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        // Regex-based detection for JSP patterns
+        for (pat, problem) in &xss_patterns {
+            if let Ok(re) = Regex::new(pat) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = code.lines().nth(line - 1).unwrap_or("");
+                    if !findings.iter().any(|f: &LangFinding| f.line == line) {
+                        findings.push(LangFinding {
+                            rule_id: "JAVA-SEC-021".to_string(),
+                            severity: "critical".to_string(),
+                            line,
+                            column: 0,
+                            start_byte: start,
+                            end_byte: end,
+                            snippet: line_text.trim().to_string(),
+                            problem: problem.to_string(),
+                            fix_hint: "Encode output with OWASP ESAPI or framework-provided encoding. Use Thymeleaf templates with th:text instead of th:utext.".to_string(),
+                            auto_fix_available: false,
+                        });
+                    }
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-SEC-022: Improper Authentication (CWE-287)
+// Severity: high | OWASP A07:2021
+// @PostMapping without @PreAuthorize, missing @AuthenticationPrincipal
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaMissingAuth;
+
+impl LangRule for JavaMissingAuth {
+    fn id(&self) -> &str { "JAVA-SEC-022" }
+    fn name(&self) -> &str { "Improper Authentication / Missing Auth on Endpoint" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let auth_annotations = [
+            "PreAuthorize", "Secured", "RolesAllowed",
+            "AuthenticationPrincipal", "Authenticated",
+        ];
+
+        let sensitive_patterns = [
+            (r##"@PostMapping|@GetMapping|@PutMapping|@DeleteMapping|@RequestMapping"##, "HTTP endpoint"),
+        ];
+
+        let has_auth = auth_annotations.iter().any(|a| {
+            Regex::new(&format!(r"(?i)@{}", a)).map(|re| re.is_match(code)).unwrap_or(false)
+        });
+
+        // Only flag if there's no auth at all in the file
+        if !has_auth {
+            for (pat, label) in &sensitive_patterns {
+                if let Ok(re) = Regex::new(pat) {
+                    for m in re.find_iter(code) {
+                        let line = code[..m.start()].matches('\n').count() + 1;
+                        let line_text = code.lines().nth(line - 1).unwrap_or("");
+                        findings.push(LangFinding {
+                            rule_id: "JAVA-SEC-022".to_string(),
+                            severity: "high".to_string(),
+                            line,
+                            column: 0,
+                            start_byte: 0,
+                            end_byte: 0,
+                            snippet: line_text.trim().to_string(),
+                            problem: format!("REST endpoint ({}) without any authentication or authorization annotation detected. This endpoint may be accessible to unauthenticated users.", label),
+                            fix_hint: "Add @PreAuthorize('isAuthenticated()') or @Secured({'ROLE_USER'}) annotation. Consider using Spring Security to protect this endpoint.".to_string(),
+                            auto_fix_available: false,
+                        });
+                    }
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-SEC-023: CSRF Protection Missing (CWE-352)
+// Severity: medium | OWASP A01:2021
+// @PostMapping without @csrf or CSRF token verification
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaCsrfMissing;
+
+impl LangRule for JavaCsrfMissing {
+    fn id(&self) -> &str { "JAVA-SEC-023" }
+    fn name(&self) -> &str { "Missing CSRF Protection on State-Changing Endpoints" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let csrf_patterns = [
+            r##"(?i)@CsrfToken|@EnableCsrf|csrf\.enabled\s*=\s*false"##,
+            r##"(?i)csrf\s*=\s*(?:false|disabled)"##,
+        ];
+
+        let has_csrf = csrf_patterns.iter().any(|p| {
+            Regex::new(p).map(|re| re.is_match(code)).unwrap_or(false)
+        });
+
+        let has_csrf_disabled = Regex::new(r"(?i)csrf\s*=\s*false")
+            .map(|re| re.is_match(code)).unwrap_or(false);
+
+        if has_csrf_disabled {
+            return findings;
+        }
+
+        let state_changing = ["@PostMapping", "@PutMapping", "@DeleteMapping", "@PatchMapping"];
+
+        for call in &tree.calls {
+            let call_str = format!("{}()", call.callee);
+            for marker in &state_changing {
+                if call_str.contains(marker) || call.callee.contains(marker) {
+                    if !has_csrf {
+                        let (start, end) = get_line_offsets(code, call.start_line);
+                        let line_text = code.lines().nth(call.start_line - 1).unwrap_or("");
+                        findings.push(LangFinding {
+                            rule_id: "JAVA-SEC-023".to_string(),
+                            severity: "medium".to_string(),
+                            line: call.start_line,
+                            column: 0,
+                            start_byte: start,
+                            end_byte: end,
+                            snippet: line_text.trim().to_string(),
+                            problem: "State-changing endpoint (@PostMapping, @PutMapping, etc.) without explicit CSRF protection. This can enable Cross-Site Request Forgery attacks.".to_string(),
+                            fix_hint: "Enable CSRF in Spring Security: http.csrf(). Enable for stateless APIs: http.csrf().ignoringAntMatchers('/api/**'). Or use token-based CSRF via @CsrfToken.".to_string(),
+                            auto_fix_available: false,
+                        });
+                    }
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-SEC-024: IDOR - Insecure Direct Object Reference (CWE-639)
+// Severity: high | OWASP A01:2021
+// @PathVariable user-controlled IDs without ownership validation
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaIdor;
+
+impl LangRule for JavaIdor {
+    fn id(&self) -> &str { "JAVA-SEC-024" }
+    fn name(&self) -> &str { "Insecure Direct Object Reference (IDOR)" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        // Detect @PathVariable usage (user-controlled resource IDs)
+        let path_var_re = Regex::new(r##"@PathVariable\s*\("##).unwrap();
+        // Detect ownership checks
+        let ownership_re = Regex::new(
+            r##"(?i)(?:currentUser|principal|auth|owner|belongsTo|isOwner|hasAccess|authorize)"##
+        ).unwrap();
+
+        for call in &tree.calls {
+            // Look for repository/service calls with path variable
+            let service_patterns = ["Repository", "Service", "Dao", "findById", "getById", "delete", "update"];
+            let has_path_var = path_var_re.is_match(code);
+
+            if has_path_var && call.arguments.iter().any(|a| a.contains("PathVariable") || a.contains("id") || a.contains("Id")) {
+                let has_ownership_check = ownership_re.is_match(code);
+
+                if !has_ownership_check {
+                    let line_text = code.lines().nth(call.start_line - 1).unwrap_or("");
+                    findings.push(LangFinding {
+                        rule_id: "JAVA-SEC-024".to_string(),
+                        severity: "high".to_string(),
+                        line: call.start_line,
+                        column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        snippet: line_text.trim().to_string(),
+                        problem: "IDOR risk: @PathVariable used to access a resource without explicit ownership validation. An attacker can enumerate resource IDs to access other users' data.".to_string(),
+                        fix_hint: "Always validate resource ownership: if (!resource.getOwner().equals(currentUser)) throw new AccessDeniedException(). Use @PreAuthorize('hasAccess(#id)') with custom security expressions.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        // Also detect patterns where ID is passed directly from request to DB
+        let idor_pattern = Regex::new(
+            r##"(?i)(?:findById|getById|findByIdOrThrow)\s*\([^)]*(?:PathVariable|@Param).*(?:\.(?:getRepository|find|findById))"##
+        ).unwrap();
+
+        if idor_pattern.is_match(code) && !ownership_re.is_match(code) {
+            for m in idor_pattern.find_iter(code) {
+                let line = code[..m.start()].matches('\n').count() + 1;
+                let line_text = code.lines().nth(line - 1).unwrap_or("");
+                if !findings.iter().any(|f: &LangFinding| f.line == line) {
+                    findings.push(LangFinding {
+                        rule_id: "JAVA-SEC-024".to_string(),
+                        severity: "high".to_string(),
+                        line,
+                        column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        snippet: line_text.trim().to_string(),
+                        problem: "Potential IDOR: resource ID from URL path used directly in database query without ownership check.".to_string(),
+                        fix_hint: "Add ownership validation: verify the returned resource belongs to the authenticated user before returning it.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-SEC-025: XML External Entity (XXE)
+// Severity: high | CWE-611
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaXxeExternalEntity;
+
+impl LangRule for JavaXxeExternalEntity {
+    fn id(&self) -> &str { "JAVA-SEC-025" }
+    fn name(&self) -> &str { "XML External Entity (XXE)" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let dangerous = ["DocumentBuilder", "SAXParser", "XMLStreamReader", "DOMReader", "XMLInputFactory"];
+        for call in &tree.calls {
+            if dangerous.iter().any(|d| call.callee.contains(d)) {
+                let line_text = get_line_text(code, call.start_line).unwrap_or_default();
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: self.severity().to_string(),
+                    line: call.start_line,
+                    column: 0,
+                    start_byte: 0,
+                    end_byte: 0,
+                    snippet: line_text.trim().to_string(),
+                    problem: "XML parser without XXE protection. External entities can be resolved.".to_string(),
+                    fix_hint: "Disable DTD and external entities in XML parsers.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-SEC-026: SQL Injection via JPA Native Query
+// Severity: critical | CWE-89
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaJpaSqlInjection;
+
+impl LangRule for JavaJpaSqlInjection {
+    fn id(&self) -> &str { "JAVA-SEC-026" }
+    fn name(&self) -> &str { "SQL Injection via JPA Native Query" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let sql_funcs = ["createNativeQuery", "createQuery", "executeUpdate", "executeQuery"];
+        for call in &tree.calls {
+            if sql_funcs.iter().any(|f| call.callee.contains(f)) {
+                let args_str = call.arguments.join(" ");
+                if args_str.contains("+") || args_str.contains("String.format") || args_str.contains("concat") {
+                    let line_text = get_line_text(code, call.start_line).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line: call.start_line,
+                        column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        snippet: line_text.trim().to_string(),
+                        problem: "SQL query built with string concatenation. SQL injection risk.".to_string(),
+                        fix_hint: "Use parameterized queries.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-SEC-027: Path Traversal
+// Severity: high | CWE-22
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaPathTraversalExternal;
+
+impl LangRule for JavaPathTraversalExternal {
+    fn id(&self) -> &str { "JAVA-SEC-027" }
+    fn name(&self) -> &str { "Path Traversal" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let dangerous = ["FileInputStream", "FileReader", "FileOutputStream", "new File", "Paths.get", "Path.of"];
+        for call in &tree.calls {
+            if dangerous.iter().any(|d| call.callee.contains(d)) {
+                let args_str = call.arguments.join(" ");
+                if args_str.contains("request") || args_str.contains("param") || args_str.contains("input") {
+                    let line_text = get_line_text(code, call.start_line).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line: call.start_line,
+                        column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        snippet: line_text.trim().to_string(),
+                        problem: "File operation with user-controlled path.".to_string(),
+                        fix_hint: "Validate and sanitize path input. Use Path.normalize() and resolve against a base directory.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-SEC-028: LDAP Injection
+// Severity: high | CWE-90
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaLdapInjectionExternal;
+
+impl LangRule for JavaLdapInjectionExternal {
+    fn id(&self) -> &str { "JAVA-SEC-028" }
+    fn name(&self) -> &str { "LDAP Injection" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let dangerous = ["InitialDirContext", "DirContext.lookup", "Context.lookup"];
+        for call in &tree.calls {
+            if dangerous.iter().any(|d| call.callee.contains(d)) {
+                let args_str = call.arguments.join(" ");
+                if args_str.contains("request") || args_str.contains("param") || args_str.contains("user") {
+                    let line_text = get_line_text(code, call.start_line).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line: call.start_line,
+                        column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        snippet: line_text.trim().to_string(),
+                        problem: "JNDI/LDAP lookup with user-controlled input.".to_string(),
+                        fix_hint: "Validate and escape LDAP special characters.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-SEC-029: JNDI Injection / Log4Shell
+// Severity: critical | CWE-94
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaJndiInjectionLog4Shell;
+
+impl LangRule for JavaJndiInjectionLog4Shell {
+    fn id(&self) -> &str { "JAVA-SEC-029" }
+    fn name(&self) -> &str { "JNDI Injection / Log4Shell Pattern" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let patterns = ["jndi:", "InitialContext", "Context.lookup"];
+        for call in &tree.calls {
+            if patterns.iter().any(|p| call.callee.contains(p)) || call.arguments.join(" ").contains("jndi:") {
+                let line_text = get_line_text(code, call.start_line).unwrap_or_default();
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: self.severity().to_string(),
+                    line: call.start_line,
+                    column: 0,
+                    start_byte: 0,
+                    end_byte: 0,
+                    snippet: line_text.trim().to_string(),
+                    problem: "JNDI lookup detected. Vulnerable to Log4Shell-style attacks.".to_string(),
+                    fix_hint: "Upgrade Log4j to 2.17+. Disable JNDI lookups.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-SEC-030: Weak Cryptography
+// Severity: high | CWE-327
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaWeakCryptoExternal;
+
+impl LangRule for JavaWeakCryptoExternal {
+    fn id(&self) -> &str { "JAVA-SEC-030" }
+    fn name(&self) -> &str { "Weak Cryptography Usage" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let dangerous = ["DES", "DESede", "Blowfish", "RC2", "RC4", "MD5", "SHA1", "getInstance(\"MD5\"", "getInstance(\"SHA-1\""];
+        for call in &tree.calls {
+            let args_str = call.arguments.join(" ");
+            if dangerous.iter().any(|d| call.callee.contains(d)) || (call.callee.contains("Cipher.getInstance") && (args_str.contains("DES") || args_str.contains("RC4") || args_str.contains("MD5"))) {
+                let line_text = get_line_text(code, call.start_line).unwrap_or_default();
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: self.severity().to_string(),
+                    line: call.start_line,
+                    column: 0,
+                    start_byte: 0,
+                    end_byte: 0,
+                    snippet: line_text.trim().to_string(),
+                    problem: "Weak cryptographic algorithm (DES/MD5/SHA1/RC4) detected.".to_string(),
+                    fix_hint: "Use AES-256-GCM for encryption, SHA-256 for hashing.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-SEC-031: Hardcoded Credentials
+// Severity: high | CWE-798
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaHardcodedCredentials;
+
+impl LangRule for JavaHardcodedCredentials {
+    fn id(&self) -> &str { "JAVA-SEC-031" }
+    fn name(&self) -> &str { "Hardcoded Credentials" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        for call in &tree.calls {
+            if call.callee.contains("setPassword") || call.callee.contains("setProperty") {
+                let args_str = call.arguments.join(" ");
+                let secret_patterns = ["password", "secret", "apikey", "api_key", "token", "credential"];
+                if secret_patterns.iter().any(|p| args_str.to_lowercase().contains(p)) {
+                    let line_text = get_line_text(code, call.start_line).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line: call.start_line,
+                        column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        snippet: line_text.trim().to_string(),
+                        problem: "Hardcoded credentials in source code.".to_string(),
+                        fix_hint: "Use environment variables: System.getenv(\"DB_PASSWORD\").".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-SEC-032: Serialization Gadget
+// Severity: critical | CWE-502
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaSerializationGadget;
+
+impl LangRule for JavaSerializationGadget {
+    fn id(&self) -> &str { "JAVA-SEC-032" }
+    fn name(&self) -> &str { "Deserialization Gadget Risk" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let dangerous = ["ObjectInputStream", "readObject", "XMLDecoder", "XStream.fromXML"];
+        for call in &tree.calls {
+            if dangerous.iter().any(|d| call.callee.contains(d)) {
+                let line_text = get_line_text(code, call.start_line).unwrap_or_default();
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: self.severity().to_string(),
+                    line: call.start_line,
+                    column: 0,
+                    start_byte: 0,
+                    end_byte: 0,
+                    snippet: line_text.trim().to_string(),
+                    problem: "Deserialization of untrusted data can lead to RCE.".to_string(),
+                    fix_hint: "Use JSON serializers (Jackson, Gson) instead of Java serialization.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-SEC-033: XML Bomb / Billion Laughs
+// Severity: high | CWE-400
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaXmlBomb;
+
+impl LangRule for JavaXmlBomb {
+    fn id(&self) -> &str { "JAVA-SEC-033" }
+    fn name(&self) -> &str { "XML Bomb / Billion Laughs Attack" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let xml_parsers = ["SAXParserFactory.newInstance", "DocumentBuilderFactory.newInstance", "XMLInputFactory.newInstance", "TransformerFactory.newInstance"];
+        for call in &tree.calls {
+            if xml_parsers.iter().any(|p| call.callee.contains(p)) {
+                let line_text = get_line_text(code, call.start_line).unwrap_or_default();
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: self.severity().to_string(),
+                    line: call.start_line,
+                    column: 0,
+                    start_byte: 0,
+                    end_byte: 0,
+                    snippet: line_text.trim().to_string(),
+                    problem: "XML parser without entity expansion limits. Vulnerable to billion laughs.".to_string(),
+                    fix_hint: "Limit entity expansion in XML parsers.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-SEC-034: SSRF - Internal Metadata
+// Severity: medium | CWE-918
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaSsrfInternal;
+
+impl LangRule for JavaSsrfInternal {
+    fn id(&self) -> &str { "JAVA-SEC-034" }
+    fn name(&self) -> &str { "SSRF - Cloud Metadata Access" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let patterns = ["169.254.169.254", "metadata.google.internal", "metadata.azure.com", "kubernetes.docker.internal"];
+        for call in &tree.calls {
+            let args_str = call.arguments.join(" ");
+            if patterns.iter().any(|p| args_str.contains(p)) {
+                let line_text = get_line_text(code, call.start_line).unwrap_or_default();
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: self.severity().to_string(),
+                    line: call.start_line,
+                    column: 0,
+                    start_byte: 0,
+                    end_byte: 0,
+                    snippet: line_text.trim().to_string(),
+                    problem: "HTTP request to internal cloud metadata. SSRF vulnerability.".to_string(),
+                    fix_hint: "Block access to internal IP ranges and cloud metadata endpoints.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-SEC-035: Insecure Random Number Generator
+// Severity: medium | CWE-338
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaInsecureRandom;
+
+impl LangRule for JavaInsecureRandom {
+    fn id(&self) -> &str { "JAVA-SEC-035" }
+    fn name(&self) -> &str { "Insecure Random Number Generator" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        for call in &tree.calls {
+            if call.callee.contains("new Random()") || call.callee.contains("java.util.Random") {
+                let line_text = get_line_text(code, call.start_line).unwrap_or_default();
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: self.severity().to_string(),
+                    line: call.start_line,
+                    column: 0,
+                    start_byte: 0,
+                    end_byte: 0,
+                    snippet: line_text.trim().to_string(),
+                    problem: "java.util.Random is predictable and not suitable for security purposes.".to_string(),
+                    fix_hint: "Use java.security.SecureRandom for security-sensitive randomness.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-AI-005: AI Hardcoded Credentials
+// Severity: high | CWE-798
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaAiHardcodedCredentials;
+
+impl LangRule for JavaAiHardcodedCredentials {
+    fn id(&self) -> &str { "JAVA-AI-005" }
+    fn name(&self) -> &str { "AI: Hardcoded Credentials" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let patterns = [
+            (r##"(?i)password\s*[=:]\s*["'][^'"]{4,}["']"##, "Hardcoded password"),
+            (r##"(?i)api[_-]?key\s*[=:]\s*["'][A-Za-z0-9_\-]{8,}["']"##, "Hardcoded API key"),
+        ];
+        for (pat, desc) in &patterns {
+            if let Ok(re) = Regex::new(pat) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!("AI-generated code contains hardcoded {}: credentials exposed.", desc),
+                        fix_hint: "Move to environment variables or a secrets manager.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-AI-006: AI SQL Injection via String Concatenation
+// Severity: critical | CWE-89
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaAiSqlInjection;
+
+impl LangRule for JavaAiSqlInjection {
+    fn id(&self) -> &str { "JAVA-AI-006" }
+    fn name(&self) -> &str { "AI: SQL Injection via String Concatenation" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let sql_funcs = ["Statement.execute", "Statement.executeQuery", "createQuery", "createNativeQuery"];
+        for call in &tree.calls {
+            if sql_funcs.iter().any(|f| call.callee.contains(f)) {
+                let args_str = call.arguments.join(" ");
+                if args_str.contains("+") || args_str.contains("String.format") {
+                    let line_text = get_line_text(code, call.start_line).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line: call.start_line,
+                        column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        snippet: line_text.trim().to_string(),
+                        problem: "AI-generated SQL query with string concatenation.".to_string(),
+                        fix_hint: "Use parameterized queries with PreparedStatement.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-AI-007: AI Command Injection
+// Severity: critical | CWE-78
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaAiCommandInjection;
+
+impl LangRule for JavaAiCommandInjection {
+    fn id(&self) -> &str { "JAVA-AI-007" }
+    fn name(&self) -> &str { "AI: Command Injection via Runtime.exec()" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let dangerous = ["Runtime.getRuntime().exec", "ProcessBuilder"];
+        for call in &tree.calls {
+            if dangerous.iter().any(|d| call.callee.contains(d)) {
+                let args_str = call.arguments.join(" ");
+                if args_str.contains("request") || args_str.contains("param") || args_str.contains("user") {
+                    let line_text = get_line_text(code, call.start_line).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line: call.start_line,
+                        column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        snippet: line_text.trim().to_string(),
+                        problem: "AI-generated command execution with user-controlled input.".to_string(),
+                        fix_hint: "Avoid Runtime.exec() with user input. Validate against allowlist.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-AI-008: AI XXE via DocumentBuilder
+// Severity: high | CWE-611
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaAiXxe;
+
+impl LangRule for JavaAiXxe {
+    fn id(&self) -> &str { "JAVA-AI-008" }
+    fn name(&self) -> &str { "AI: XXE via DocumentBuilder" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let dangerous = ["DocumentBuilderFactory.newInstance", "SAXParserFactory.newInstance"];
+        for call in &tree.calls {
+            if dangerous.iter().any(|d| call.callee.contains(d)) {
+                let line_text = get_line_text(code, call.start_line).unwrap_or_default();
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: self.severity().to_string(),
+                    line: call.start_line,
+                    column: 0,
+                    start_byte: 0,
+                    end_byte: 0,
+                    snippet: line_text.trim().to_string(),
+                    problem: "AI-generated XML parser without XXE protection.".to_string(),
+                    fix_hint: "Disable XXE: factory.setFeature(XMLConstants.ACCESS_EXTERNAL_DTD, \"\");".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-SEC-036: Deep SSRF Detection with User Input and Internal IP Ranges
+// Severity: high | CWE-918
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaSsrfDeep;
+
+impl LangRule for JavaSsrfDeep {
+    fn id(&self) -> &str { "JAVA-SEC-036" }
+    fn name(&self) -> &str { "SSRF: Deep Detection with User Input and Internal IPs" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let ssrf_targets: HashSet<&str> = [
+            "HttpClient.newBuilder",
+            "HttpClient.send",
+            "HttpURLConnection",
+            "RestTemplate.getForObject",
+            "RestTemplate.postForObject",
+            "RestTemplate.putForObject",
+            "RestTemplate.deleteForObject",
+            "RestTemplate.patchForObject",
+            "WebClient.create",
+            "WebClient.builder",
+            "URLConnection.connect",
+            "URLConnection.getInputStream",
+            "new URL",
+            "URL.openConnection",
+            "HttpRequest.newBuilder",
+            "HttpResponse.send",
+        ].into_iter().collect();
+
+        let user_input_patterns: Vec<&str> = vec![
+            "@RequestParam",
+            "@PathVariable",
+            "@RequestBody",
+            "request.getParameter",
+            "request.getQueryString",
+            "request.getHeader",
+            "request.getInputStream",
+            "request.getReader",
+            "params.get",
+            "query.get",
+            "body.get",
+            "form.get",
+            "HttpServletRequest.getParameter",
+            "HttpServletRequest.getQueryString",
+            "HttpServletRequest.getHeader",
+            "HttpServletRequest.getInputStream",
+        ];
+
+        let internal_ip_patterns: Vec<&str> = vec![
+            "169.254.169.254",
+            "169.254.169.253",
+            "127.0.0.1",
+            "localhost",
+            "0.0.0.0",
+            "metadata.google.internal",
+            "metadata.azure.com",
+        ];
+
+        for call in &tree.calls {
+            if !ssrf_targets.iter().any(|t| call.callee.contains(t)) {
+                continue;
+            }
+
+            let args_str = call.arguments.join(" ");
+
+            let has_user_input = user_input_patterns.iter().any(|p| args_str.contains(p));
+            let has_internal_ip = internal_ip_patterns.iter().any(|p| args_str.contains(p));
+
+            if has_user_input || has_internal_ip {
+                let (start, end) = get_line_offsets(code, call.start_line);
+                let line_text = get_line_text(code, call.start_line).unwrap_or_default();
+
+                let problem = if has_internal_ip {
+                    format!(
+                        "SSRF risk: '{}' uses internal IP range or cloud metadata endpoint. \
+                        CWE-918: Attackers may access internal resources, cloud metadata (AWS 169.254.169.254), \
+                        or local services.",
+                        call.callee
+                    )
+                } else {
+                    format!(
+                        "SSRF risk: '{}' uses URL derived from user-controlled input. \
+                        CWE-918: Without proper validation, attackers can make the server request \
+                        arbitrary URLs, internal services, or cloud metadata endpoints.",
+                        call.callee
+                    )
+                };
+
+                let fix_hint = if has_internal_ip {
+                    "Block access to internal IP ranges and cloud metadata endpoints. \
+                    Add IP allowlist validation before making requests.".to_string()
+                } else {
+                    "Validate URLs against an allowlist of permitted domains and schemes. \
+                    Block internal IP ranges and cloud metadata endpoints (169.254.0.0/16). \
+                    Example: URLValidator.validate(url, ALLOWED_HOSTS)".to_string()
+                };
+
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: self.severity().to_string(),
+                    line: call.start_line,
+                    column: 0,
+                    start_byte: start,
+                    end_byte: end,
+                    snippet: line_text.trim().to_string(),
+                    problem,
+                    fix_hint,
+                    auto_fix_available: false,
+                });
+            }
+        }
+
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─── JAVA-AI-009: Typo-Squatted Java Package Import ───────────────────────────
+
+pub struct JavaSlopsquattingTypo;
+
+impl LangRule for JavaSlopsquattingTypo {
+    fn id(&self) -> &str { "JAVA-AI-009" }
+    fn name(&self) -> &str { "Typo-Squatted Java Package Import" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let typo_patterns: Vec<(&str, &str, &str)> = vec![
+            // java.util typos
+            (r##"import\s+java\.utile"##, "java.util", "Possible typo-squat of 'java.util' package"),
+            (r##"import\s+java\.uitl"##, "java.util", "Possible typo-squat of 'java.util' package"),
+            (r##"import\s+java\.uil"##, "java.util", "Possible typo-squat of 'java.util' package"),
+            (r##"import\s+java\.utl"##, "java.util", "Possible typo-squat of 'java.util' package"),
+            // java.io typos
+            (r##"import\s+java\.oi"##, "java.io", "Possible typo-squat of 'java.io' package"),
+            (r##"import\s+java\.ioo"##, "java.io", "Possible typo-squat of 'java.io' package"),
+            // org.springframework typos
+            (r##"import\s+org\.springframwork"##, "org.springframework", "Possible typo-squat of 'org.springframework' package"),
+            (r##"import\s+org\.springfrmework"##, "org.springframework", "Possible typo-squat of 'org.springframework' package"),
+            (r##"import\s+org\.sprngframework"##, "org.springframework", "Possible typo-squat of 'org.springframework' package"),
+            (r##"import\s+org\.springframerwork"##, "org.springframework", "Possible typo-squat of 'org.springframework' package"),
+            // org.apache.commons typos
+            (r##"import\s+org\.apache\.common"##, "org.apache.commons", "Possible typo-squat of 'org.apache.commons' package"),
+            (r##"import\s+org\.apache\.commns"##, "org.apache.commons", "Possible typo-squat of 'org.apache.commons' package"),
+            (r##"import\s+org\.apche\.commons"##, "org.apache.commons", "Possible typo-squat of 'org.apache.commons' package"),
+            (r##"import\s+org\.apache\.commos"##, "org.apache.commons", "Possible typo-squat of 'org.apache.commons' package"),
+            // com.google.guava typos
+            (r##"import\s+com\.gogle\.guava"##, "com.google.guava", "Possible typo-squat of 'com.google.guava' package"),
+            (r##"import\s+com\.googel\.guava"##, "com.google.guava", "Possible typo-squat of 'com.google.guava' package"),
+            (r##"import\s+com\.google\.guava"##, "com.google.guava", "Possible typo-squat of 'com.google.guava' package"),
+            (r##"import\s+com\.googl\.guava"##, "com.google.guava", "Possible typo-squat of 'com.google.guava' package"),
+            // io.jsonwebtoken typos
+            (r##"import\s+io\.jsonwebtokn"##, "io.jsonwebtoken", "Possible typo-squat of 'io.jsonwebtoken' package"),
+            (r##"import\s+io\.jsonwebtken"##, "io.jsonwebtoken", "Possible typo-squat of 'io.jsonwebtoken' package"),
+            (r##"import\s+io\.jsonwebtoke"##, "io.jsonwebtoken", "Possible typo-squat of 'io.jsonwebtoken' package"),
+            // com.fasterxml.jackson typos
+            (r##"import\s+com\.fasterxml\.jakson"##, "com.fasterxml.jackson", "Possible typo-squat of 'com.fasterxml.jackson' package"),
+            (r##"import\s+com\.fasterxml\.jkson"##, "com.fasterxml.jackson", "Possible typo-squat of 'com.fasterxml.jackson' package"),
+            (r##"import\s+com\.fasterxml\.jackson"##, "com.fasterxml.jackson", "Possible typo-squat of 'com.fasterxml.jackson' package"),
+        ];
+
+        for (pattern, _canonical, desc) in &typo_patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = get_line_from_byte(code, m.start());
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!("Slopsquatting Risk: {}", desc),
+                        fix_hint: "Verify this package exists in Maven Central or official repositories before using.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        // Check for typosquatting keywords in package imports
+        let keyword_patterns: Vec<(&str, &str)> = vec![
+            (r##"import\s+[a-z]+\.[a-z]+\.[a-z]+\.(typo|demo|test|lib|utils|helper)"##, "Package import with typosquatting keyword"),
+            (r##"import\s+com\.(typo|demo|test|lib|utils|helper)\."##, "Package import with typosquatting keyword in domain"),
+            (r##"import\s+org\.(typo|demo|test|lib|utils|helper)\."##, "Package import with typosquatting keyword in org"),
+        ];
+
+        for (pattern, desc) in &keyword_patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = get_line_from_byte(code, m.start());
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!("Slopsquatting Risk: {} in import statement", desc),
+                        fix_hint: "Verify this package exists in Maven Central or official repositories before using.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-SEC-037: Weak JWT Verification
+// Severity: critical | CWE-345
+// Jwts.parser().setSigningKey(null), Algorithm.NONE, etc.
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaWeakJwt;
+
+impl LangRule for JavaWeakJwt {
+    fn id(&self) -> &str { "JAVA-SEC-037" }
+    fn name(&self) -> &str { "Weak JWT Verification" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let patterns = [
+            (r#"Jwts\.parser\(\)\.setSigningKey\s*\(\s*null\s*\)"#, "JWT parser with null signing key - no verification"),
+            (r#"Jwts\.parser\(\)\.setSigningKey\s*\(\s*""\s*\)"#, "JWT parser with empty signing key"),
+            (r#"Jwts\.parserBuilder\(\)\.setSigningKey\s*\(\s*null\s*\)"#, "JWT parserBuilder with null signing key"),
+            (r#"Jwts\.parserBuilder\(\)\.setSigningKey\s*\(\s*""\s*\)"#, "JWT parserBuilder with empty signing key"),
+            (r#"Key\.getInstance\s*\(\s*["']none["']"#, "JWT with 'none' algorithm - no signature verification"),
+            (r#"Algorithm\.NONE"#, "Algorithm.NONE used for JWT - disables signature verification"),
+            (r#"Jwts\.parser\(\)\.verifyWith\s*\(\s*null\s*\)"#, "JWT parser with verifyWith(null)"),
+            (r#"new SecretKeySpec\s*\(\s*new\s+byte\s*\[\s*0\s*\]\s*,"#, "SecretKeySpec with zero-length key"),
+            (r#"Jwts\.parser\(\)\.verifyWith\s*\(\s*new\s+SecretKeySpec\s*\(\s*new\s+byte\s*\[\s*0\s*\]\s*,"#, "JWT verification with empty key"),
+        ];
+
+        for (pat, problem) in &patterns {
+            if let Ok(re) = regex::Regex::new(pat) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!("Weak JWT verification: {}. Tokens can be forged without proper signature verification.", problem),
+                        fix_hint: "Use a strong, secret key (minimum 256 bits for HS256). Retrieve the key securely (e.g., from environment variable or secrets manager). Always verify the signing key is present and valid.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-CRYPT-001: Insecure Cryptography in Java
+// Severity: critical | CWE-327, CWE-295
+// Detects insecure cryptographic practices in Java code
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaInsecureCrypto;
+
+impl LangRule for JavaInsecureCrypto {
+    fn id(&self) -> &str { "JAVA-CRYPT-001" }
+    fn name(&self) -> &str { "Insecure Cryptographic Practices" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        // Insecure SSL/TLS protocols
+        let tls_patterns = [
+            (r#"SSLContext\.getInstance\s*\(\s*["']TLSv1\.0["']\s*\)"#, "SSLContext with TLSv1.0 - deprecated protocol"),
+            (r#"SSLContext\.getInstance\s*\(\s*["']SSL["']\s*\)"#, "SSLContext with 'SSL' - uses deprecated SSL protocol"),
+            (r#"SSLContext\.getInstance\s*\(\s*["']SSLv3["']\s*\)"#, "SSLContext with SSLv3 - vulnerable to POODLE"),
+            (r#"SSLContext\.getInstance\s*\(\s*["']TLSv1\.1["']\s*\)"#, "SSLContext with TLSv1.1 - deprecated protocol"),
+            (r#"setEnabledProtocols\s*\(\s*\[[^]]*"TLSv1\.0"[^]]*\]"#, "TLSv1.0 enabled - deprecated protocol"),
+            (r#"setEnabledProtocols\s*\(\s*\[[^]]*"TLSv1\.1"[^]]*\]"#, "TLSv1.1 enabled - deprecated protocol"),
+            (r#"setEnabledProtocols\s*\(\s*\[[^]]*"SSLv3"[^]]*\]"#, "SSLv3 enabled - vulnerable to POODLE"),
+        ];
+
+        // Insecure cipher modes (ECB, no padding validation)
+        let cipher_patterns = [
+            (r#"Cipher\.getInstance\s*\(\s*["']AES/ECB/[^"]*PKCS5Padding["']\s*\)"#, "AES/ECB/PKCS5Padding - ECB mode is insecure (patterns visible in ciphertext)"),
+            (r#"Cipher\.getInstance\s*\(\s*["']AES/ECB/["']"#, "AES/ECB mode - insecure (no encryption beyond XOR patterns)"),
+            (r#"Cipher\.getInstance\s*\(\s*["']DES/ECB/[^"]*["']"#, "DES/ECB mode - insecure (56-bit key, visible patterns)"),
+            (r#"Cipher\.getInstance\s*\(\s*["']DES/ECB/PKCS5Padding["']\s*\)"#, "DES/ECB/PKCS5Padding - broken cipher and mode"),
+            (r#"Cipher\.getInstance\s*\(\s*["'][^/]+/CBC/["']"#, "CBC mode without authentication - consider GCM"),
+        ];
+
+        // Weak key generation
+        let keygen_patterns = [
+            (r#"KeyGenerator\.getInstance\s*\(\s*["']DES["']\s*\)"#, "KeyGenerator for DES - 56-bit key is trivially broken"),
+            (r#"KeyGenerator\.getInstance\s*\(\s*["']AES["']\s*\).*(?i)(?:\.init\s*\(\s*[0-9]{1,3}\s*\))?"#, "AES KeyGenerator - ensure key size is 128+ bits"),
+            (r#"KeyPairGenerator\.getInstance\s*\(\s*["']RSA["']\s*\)"#, "RSA KeyPairGenerator - verify key size is 2048+ bits"),
+        ];
+
+        // Short key in SecretKeySpec
+        let short_key_patterns = [
+            (r#"new\s+SecretKeySpec\s*\(\s*[^,]+,\s*["']AES["']\s*\).*(?i)(key\.length\s*<\s*16|key\.length\s*==\s*8)"#, "SecretKeySpec with short key for AES (< 16 bytes)"),
+            (r#"new\s+SecretKeySpec\s*\(\s*new\s+byte\s*\[\s*[0-9]{1,2}\s*\]\s*,"#, "SecretKeySpec with very short key - likely insecure"),
+        ];
+
+        // Blanket TrustManager (accepts all certs)
+        let trust_patterns = [
+            (r#"TrustManager\s*\[\s*\]\s*\{\s*new\s+X509TrustManager\s*\{[^}]*checkClientTrusted\s*\(\s*\)\s*\{\s*\}"#, "X509TrustManager with empty checkClientTrusted - accepts all client certs"),
+            (r#"TrustManager\s*\[\s*\]\s*\{\s*new\s+X509TrustManager\s*\{[^}]*checkServerTrusted\s*\(\s*\)\s*\{\s*\}"#, "X509TrustManager with empty checkServerTrusted - accepts all server certs"),
+            (r#"TrustManager\s*\[\s*\]\s*\{\s*new\s+X509TrustManager\s*\{[^}]*checkValidity\s*\(\s*\)\s*\{\s*\}"#, "X509TrustManager with empty checkValidity - accepts expired certs"),
+            (r#"new\s+TrustManagerFactory\([^)]*\).*\.init\s*\(\s*\(TrustManager\[\]\)\s*\{"#, "Custom TrustManager array - verify implementation"),
+        ];
+
+        // Process all patterns
+        for (pattern, problem) in tls_patterns.iter().chain(cipher_patterns.iter())
+            .chain(keygen_patterns.iter()).chain(short_key_patterns.iter())
+            .chain(trust_patterns.iter()) {
+            if let Ok(re) = regex::Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+                    
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!(
+                            "Insecure Cryptography: {}. CWE-327/CWE-295: {}",
+                            problem,
+                            if pattern.contains("SSLContext") || pattern.contains("TLS") {
+                                "Using deprecated protocols allows MITM attacks."
+                            } else if pattern.contains("ECB") {
+                                "ECB mode reveals patterns in ciphertext."
+                            } else if pattern.contains("TrustManager") {
+                                "Blanket TrustManager allows any certificate."
+                            } else {
+                                "Weak cryptographic configuration."
+                            }
+                        ),
+                        fix_hint: if pattern.contains("TLS") || pattern.contains("SSL") {
+                            "Use TLS 1.2 or higher. Example: SSLContext.getInstance(\"TLSv1.2\");".to_string()
+                        } else if pattern.contains("ECB") {
+                            "Use AES/GCM or AES/CBC with HMAC. Example: Cipher.getInstance(\"AES/GCM/NoPadding\");".to_string()
+                        } else if pattern.contains("TrustManager") {
+                            "Use the default TrustManager or implement proper certificate validation.".to_string()
+                        } else {
+                            "Use strong algorithms and key sizes (AES-256, RSA-2048+).".to_string()
+                        },
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-SEC-038: SQL Injection via JPA/Hibernate Native Query
+// Severity: critical | CWE-89
+// Native SQL queries in JPA/Hibernate built with string concatenation
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaJpaNativeSqlInjection;
+
+impl LangRule for JavaJpaNativeSqlInjection {
+    fn id(&self) -> &str { "JAVA-SEC-038" }
+    fn name(&self) -> &str { "SQL Injection (JPA/Hibernate Native Query)" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let jpa_imports = [
+            "javax.persistence.", "jakarta.persistence.",
+            "org.hibernate.", "org.springframework.data.jpa.",
+        ];
+        let has_jpa = has_import(tree, &jpa_imports);
+
+        if !has_jpa {
+            return findings;
+        }
+
+        let dangerous_patterns = vec![
+            (r#"createNativeQuery\s*\([^)]*\+\s*(?:req|param|request|input|user)"#, "JPA createNativeQuery with string concatenation of user input"),
+            (r#"createQuery\s*\([^)]*\+\s*(?:req|param|request|input|user)"#, "JPA createQuery (HQL) with string concatenation"),
+            (r#"createSQLQuery\s*\([^)]*\+\s*(?:req|param|request|input|user)"#, "Hibernate createSQLQuery with string concatenation"),
+            (r#"findBySql\s*\([^)]*\+\s*(?:req|param|request|input|user)"#, "Spring Data JPA findBySql with user input"),
+            (r#"(?:@Query)\s*\(\s*["'][^"']*(?:SELECT|INSERT|UPDATE|DELETE)[^"']*\$\{[^}]*(?:req|param|request|input|user)"#, "JPQL @Query with string interpolation of user input"),
+            (r#"entityManager\.createNativeQuery\s*\([^)]*\+[^)]*\)"#, "EntityManager native query with concatenation"),
+            (r#"session\.createSQLQuery\s*\([^)]*\+[^)]*\)"#, "Hibernate Session createSQLQuery with concatenation"),
+        ];
+
+        for (pattern, desc) in &dangerous_patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    if findings.iter().any(|f: &LangFinding| f.line == line) {
+                        continue;
+                    }
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!(
+                            "JPA/Hibernate SQL injection: {}. CWE-89: Native SQL query built with \
+                            string concatenation allows attackers to manipulate database queries.",
+                            desc
+                        ),
+                        fix_hint: "Use parameterized queries: entityManager.createNativeQuery(\n                            \"SELECT * FROM users WHERE id = ?\", User.class).setParameter(1, userId);\n                            In Spring Data JPA @Query: @Query(\"SELECT u FROM User u WHERE u.name = :name\")\n                            User findByName(@Param(\"name\") String name);".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-SEC-039: Deserialization Gadget Chain
+// Severity: critical | CWE-502
+// ObjectInputStream with readObject on untrusted data — gadget chains enable RCE
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaDeserializationGadgetChain;
+
+impl LangRule for JavaDeserializationGadgetChain {
+    fn id(&self) -> &str { "JAVA-SEC-039" }
+    fn name(&self) -> &str { "Deserialization Gadget Chain (readObject)" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let dangerous_patterns = vec![
+            (r#"ObjectInputStream\s*\(\s*(?:new|)?(?:FileInputStream|SocketInputStream|ByteArrayInputStream|InputStream)"#, "ObjectInputStream created with untrusted stream — gadget chain RCE risk"),
+            (r#"readObject\s*\(\s*\)\s*(?:throws|;)"#, "readObject() called — deserializes untrusted data"),
+            (r#"readUnshared\s*\(\s*\)"#, "readUnshared() called — same deserialization risk as readObject"),
+            (r#"XMLDecoder\s*\(\s*(?:new|)?(?:FileInputStream|ByteArrayInputStream|Socket)"#, "XMLDecoder with untrusted stream — XML deserialization RCE"),
+            (r#"XStream\s*\(\s*\)\s*\.fromXML\s*\([^)]*(?:req|param|request|input|user|body)"#, "XStream.fromXML() with user input — known RCE gadget chain"),
+            (r#"readValue\s*\(\s*(?:req|param|request|input|user|body|file)"#, "Jackson/JSON deserialization with user input — potential gadget chain"),
+            (r#"yaml\.load\s*\([^)]*(?:req|param|request|input|user|body|file)"#, "SnakeYAML load() with user input — YAML deserialization RCE"),
+            // Known gadget chain triggers
+            (r#"URL\s*\(\s*(?:req|param|request|input|user)"#, "URL object deserialization — URL gadget chain for DNS/SSRF"),
+        ];
+
+        for (pattern, desc) in &dangerous_patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    if findings.iter().any(|f: &LangFinding| f.line == line) {
+                        continue;
+                    }
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!(
+                            "Deserialization gadget chain: {}. CWE-502: ObjectInputStream.readObject() \
+                            on untrusted data. Attackers can use known gadget chains (Apache Commons, \
+                            Spring, Groovy) to achieve RCE without needing to plant malicious code.",
+                            desc
+                        ),
+                        fix_hint: "Never deserialize untrusted data. Use JSON (Jackson with \
+                            enableDefaultTyping disabled) orProtobuf. If deserialization is needed, \
+                            use ObjectInputFilter with a whitelist: \
+                            ObjectInputFilter filter = ObjectInputFilter.Config.createFilter(\"mypackage.*\");".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-SEC-040: LDAP Injection Deep
+// Severity: high | CWE-90
+// LDAP queries built with string concatenation of user input
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaLdapInjectionDeep;
+
+impl LangRule for JavaLdapInjectionDeep {
+    fn id(&self) -> &str { "JAVA-SEC-040" }
+    fn name(&self) -> &str { "LDAP Injection Deep" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let ldap_imports = ["javax.naming.", "javax.naming.directory.", "ldap", "org.springframework.security.ldap."];
+        let has_ldap = has_import(tree, &ldap_imports);
+
+        if !has_ldap {
+            return findings;
+        }
+
+        let dangerous_patterns = vec![
+            (r#"search\s*\([^)]*\+\s*(?:req|param|request|input|user|username|email)"#, "LDAP search with string concatenation of user input"),
+            (r#"search\s*\([^)]*(?:req|param|request|input|user|username|email)[^)]*\+[^)]*\)"#, "LDAP search with user input in filter"),
+            (r#"DirContext\.search\s*\([^)]*\+[^)]*\)"#, "DirContext.search with concatenation"),
+            (r#"(?:ctx|dirContext|ldapContext)\s*\.\s*search\s*\([^)]*\+[^)]*\+[^)]*\)"#, "LDAP search with multiple concatenated parameters"),
+            (r#"new\s+Hashtable\s*\(\s*\)\s*.*?put\s*\(\s*\"java\.naming\.provider\.url\".*?\+.*?req"#, "LDAP context initialized with user-controlled URL"),
+        ];
+
+        for (pattern, desc) in &dangerous_patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    if findings.iter().any(|f: &LangFinding| f.line == line) {
+                        continue;
+                    }
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!(
+                            "LDAP injection: {}. CWE-90: User input concatenated into LDAP query \
+                            allows attackers to bypass authentication, enumerate directory structure, \
+                            or extract sensitive data.",
+                            desc
+                        ),
+                        fix_hint: "Use parameterized LDAP queries with SearchControls. Escape special \
+                            characters: DN = escapeDN(username); Filter = escapeFilter(username). \
+                            Example: SearchControls sc = new SearchControls(); \
+                            sc.setFilterExpr(\"(&(uid={0})(objectClass=person))\"); \
+                            ctx.search(base, sc.getFilter(), new Object[]{username}, sc);".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JAVA-SEC-041: Path Traversal Deep (Spring @PathVariable)
+// Severity: high | CWE-22
+// Spring MVC @PathVariable used directly in file operations without validation
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JavaPathTraversalSpring;
+
+impl LangRule for JavaPathTraversalSpring {
+    fn id(&self) -> &str { "JAVA-SEC-041" }
+    fn name(&self) -> &str { "Path Traversal (Spring @PathVariable)" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let spring_imports = ["org.springframework.", "org.springframework.web.bind.annotation.", "javax.servlet.", "jakarta.servlet."];
+        let has_spring = has_import(tree, &spring_imports);
+
+        if !has_spring {
+            return findings;
+        }
+
+        let dangerous_patterns = vec![
+            (r#"@GetMapping|@PostMapping|@RequestMapping|@PutMapping|@DeleteMapping""#, "Spring REST endpoint detected — checking for path traversal"),
+            (r#"@PathVariable\s+\w+\s+(\w+).*?(?:new\s+File|Paths\.get|Path\.of|Files\.readString|Files\.readAllBytes|Files\.copy|Files\.newBufferedReader)\s*\([^)]*\1"#, "PathVariable parameter used directly in file operation without validation"),
+            (r#"@PathVariable.*?(?:filename|file|path|filepath|uri).*?(?:new\s+File|Paths\.get|Path\.of)\s*\([^)]*\$"#, "PathVariable with dangerous name used in file operation"),
+            (r#"PathVariable\s+\w+\s+(\w+).*?(?:sendRedirect|forward)\s*\([^)]*\1"#, "PathVariable used in redirect/forward — open redirect via path traversal"),
+            (r#"PathVariable.*?(?:template|view|page).*?(?:return|ModelAndView)\s*\(.*?\1"#, "PathVariable used in template/view name — potential path traversal"),
+        ];
+
+        for (pattern, desc) in &dangerous_patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    if findings.iter().any(|f: &LangFinding| f.line == line) {
+                        continue;
+                    }
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!(
+                            "Path traversal via @PathVariable: {}. CWE-22: A @PathVariable parameter \
+                            (e.g., filename) is used directly in a file operation without sanitization. \
+                            Attackers can use ../../etc/passwd to access arbitrary files.",
+                            desc
+                        ),
+                        fix_hint: "Always validate and sanitize @PathVariable values: \
+                            String filename = pathVariable.replaceAll(\"[^a-zA-Z0-9._-]\", \"\"); \
+                            Path file = baseDir.resolve(filename).normalize(); \
+                            if (!file.startsWith(baseDir)) throw new SecurityException();".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// All Java Security Rules
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Returns all Java security rules (for use by JavaScanner).
+pub fn java_security_rules() -> Vec<Box<dyn LangRule>> {
+    vec![
+        Box::new(JavaDeserializationRCE),
+        Box::new(JavaSqlInjection),
+        Box::new(JavaXXE),
+        Box::new(JavaJndiInjection),
+        Box::new(JavaSSRF),
+        Box::new(JavaSpELInjection),
+        Box::new(JavaHardcodedSecrets),
+        Box::new(JavaWeakCrypto),
+        Box::new(JavaCommandInjection),
+        Box::new(JavaPathTraversal),
+        Box::new(JavaSpringSecurityMisconfig),
+        Box::new(JavaLogInjection),
+        Box::new(JavaLdapInjection),
+        Box::new(JavaUnsafeReflection),
+        Box::new(JavaMassAssignment),
+        Box::new(JavaTemplateInjection),
+        Box::new(JavaXMLDecoder),
+        Box::new(JavaTypeConfusion),
+        Box::new(JavaInsecureCookie),
+        Box::new(JavaYamlDeserialization),
+        Box::new(JavaSlopsquatting),
+        Box::new(JavaVerboseError),
+        Box::new(JavaMissingInputValidation),
+        Box::new(JavaAiGenComment),
+        // New rules JAVA-SEC-021 through JAVA-SEC-024
+        Box::new(JavaXss),
+        Box::new(JavaMissingAuth),
+        Box::new(JavaCsrfMissing),
+        Box::new(JavaIdor),
+        // New rules JAVA-SEC-025 through JAVA-SEC-035
+        Box::new(JavaXxeExternalEntity),
+        Box::new(JavaJpaSqlInjection),
+        Box::new(JavaPathTraversalExternal),
+        Box::new(JavaLdapInjectionExternal),
+        Box::new(JavaJndiInjectionLog4Shell),
+        Box::new(JavaWeakCryptoExternal),
+        Box::new(JavaHardcodedCredentials),
+        Box::new(JavaSerializationGadget),
+        Box::new(JavaXmlBomb),
+        Box::new(JavaSsrfInternal),
+        Box::new(JavaInsecureRandom),
+        // New rules JAVA-AI-005 through JAVA-AI-008
+        Box::new(JavaAiHardcodedCredentials),
+        Box::new(JavaAiSqlInjection),
+        Box::new(JavaAiCommandInjection),
+        Box::new(JavaAiXxe),
+        // New rule JAVA-SEC-036
+        Box::new(JavaSsrfDeep),
+        // JAVA-AI-009: Typo-Squatted Java Package Import
+        Box::new(JavaSlopsquattingTypo),
+        // New rule JAVA-SEC-037
+        Box::new(JavaWeakJwt),
+        // JAVA-CRYPT-001: Insecure Cryptography
+        Box::new(JavaInsecureCrypto),
+        // JAVA-SEC-038 to JAVA-SEC-041: Vulnerable Sink Detection (Reverse-Engineered from hackingtool)
+        // JAVA-SEC-038: JPA/Hibernate Native Query SQL Injection
+        Box::new(JavaJpaNativeSqlInjection),
+        // JAVA-SEC-039: Deserialization Gadget Chain
+        Box::new(JavaDeserializationGadgetChain),
+        // JAVA-SEC-040: LDAP Injection Deep
+        Box::new(JavaLdapInjectionDeep),
+        // JAVA-SEC-041: Path Traversal Deep (Spring @PathVariable)
+        Box::new(JavaPathTraversalSpring),
+    ]
+}
+

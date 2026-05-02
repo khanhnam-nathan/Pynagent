@@ -5,11 +5,13 @@
 //! Integrates with GitHub Code Scanning API to upload SARIF reports.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// GitHub API configuration for Code Scanning.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitHubConfig {
+    /// Shared HTTP client for connection pooling.
+    #[serde(skip)]
+    client: reqwest::Client,
     /// GitHub token for API authentication.
     pub token: Option<String>,
     /// Owner (user or organization).
@@ -23,6 +25,10 @@ pub struct GitHubConfig {
 impl GitHubConfig {
     pub fn new(owner: &str, repo: &str) -> Self {
         Self {
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new()),
             token: std::env::var("GITHUB_TOKEN").ok(),
             owner: owner.to_string(),
             repo: repo.to_string(),
@@ -42,7 +48,6 @@ impl GitHubConfig {
 
     /// Upload a SARIF report to GitHub Code Scanning.
     pub async fn upload_sarif(&self, sarif_content: &str, category: &str) -> Result<UploadResponse, String> {
-        let client = reqwest::Client::new();
         let url = format!(
             "{}/repos/{}/{}/code-scanning/sarifs",
             self.api_url, self.owner, self.repo
@@ -56,7 +61,7 @@ impl GitHubConfig {
             "category": category,
         });
 
-        let mut request = client.post(&url)
+        let mut request = self.client.post(&url)
             .header("Accept", "application/vnd.github+json")
             .header("X-GitHub-Api-Version", "2022-11-28")
             .json(&body);
@@ -82,13 +87,12 @@ impl GitHubConfig {
 
     /// Poll the status of a SARIF upload.
     pub async fn get_sarif_status(&self, sarif_id: &str) -> Result<SarifStatusResponse, String> {
-        let client = reqwest::Client::new();
         let url = format!(
             "{}/repos/{}/{}/code-scanning/sarifs/{}",
             self.api_url, self.owner, self.repo, sarif_id
         );
 
-        let mut request = client.get(&url)
+        let mut request = self.client.get(&url)
             .header("Accept", "application/vnd.github+json")
             .header("X-GitHub-Api-Version", "2022-11-28");
 
@@ -232,13 +236,12 @@ impl GitHubAdvisoryClient {
 
     /// Query advisories by ecosystem (e.g., "pip", "npm", "go").
     pub async fn query_by_ecosystem(&self, ecosystem: &str) -> Result<Vec<GitHubAdvisory>, String> {
-        let client = reqwest::Client::new();
         let url = format!(
             "{}/advisories?type=reviewed&ecosystem={}&per_page=100",
             self.config.api_url, ecosystem
         );
 
-        let mut request = client.get(&url)
+        let mut request = self.config.client.get(&url)
             .header("Accept", "application/vnd.github+json")
             .header("X-GitHub-Api-Version", "2022-11-28");
 
@@ -268,13 +271,12 @@ impl GitHubAdvisoryClient {
 
     /// Query advisories by CWE.
     pub async fn query_by_cwe(&self, cwe_id: &str) -> Result<Vec<GitHubAdvisory>, String> {
-        let client = reqwest::Client::new();
         let url = format!(
             "{}/advisories?type=reviewed&cwe_id={}&per_page=100",
             self.config.api_url, cwe_id
         );
 
-        let mut request = client.get(&url)
+        let mut request = self.config.client.get(&url)
             .header("Accept", "application/vnd.github+json")
             .header("X-GitHub-Api-Version", "2022-11-28");
 
@@ -337,7 +339,6 @@ impl GitHubSecretScanningClient {
 
     /// List secret scanning alerts.
     pub async fn list_alerts(&self, state: Option<&str>) -> Result<Vec<SecretScanningAlert>, String> {
-        let client = reqwest::Client::new();
         let mut url = format!(
             "{}/repos/{}/{}/secret-scanning/alerts",
             self.config.api_url, self.config.owner, self.config.repo
@@ -347,7 +348,7 @@ impl GitHubSecretScanningClient {
             url.push_str(&format!("?state={}", s));
         }
 
-        let mut request = client.get(&url)
+        let mut request = self.config.client.get(&url)
             .header("Accept", "application/vnd.github+json")
             .header("X-GitHub-Api-Version", "2022-11-28");
 

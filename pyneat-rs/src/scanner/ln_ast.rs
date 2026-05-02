@@ -17,7 +17,6 @@
 //!
 //! Supported languages: Python, JavaScript, TypeScript, Go, Java, Rust, C#, PHP, Ruby
 
-#![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
 
@@ -168,6 +167,23 @@ pub struct LnDeepNesting {
     pub depth: usize,
 }
 
+/// A language-neutral identifier reference (for variable tracking in data flow analysis).
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
+pub struct LnIdentifier {
+    /// Variable/identifier name
+    pub name: String,
+    /// 1-indexed line where this identifier appears
+    pub start_line: usize,
+    /// 1-indexed end line
+    pub end_line: usize,
+    /// Byte offset start
+    pub start_byte: usize,
+    /// Byte offset end
+    pub end_byte: usize,
+    /// Is this a definition (True) or a reference (False)?
+    pub is_definition: bool,
+}
+
 /// Complete LN-AST for a source file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LnAst {
@@ -195,6 +211,8 @@ pub struct LnAst {
     pub todos: Vec<LnTodo>,
     /// Lines with deep nesting (for arrow anti-pattern)
     pub deep_nesting: Vec<LnDeepNesting>,
+    /// All identifier references (for variable tracking / data flow)
+    pub identifiers: Vec<LnIdentifier>,
 }
 
 impl LnAst {
@@ -223,6 +241,7 @@ impl LnAst {
             catch_blocks: Vec::new(),
             todos: Vec::new(),
             deep_nesting: Vec::new(),
+            identifiers: Vec::new(),
         }
     }
 }

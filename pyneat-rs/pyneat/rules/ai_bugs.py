@@ -143,6 +143,33 @@ FAKE_PARAM_PATTERNS: List[Dict[str, Any]] = [
     },
 ]
 
+IDENTITY_COMPARISON_PATTERNS: List[Dict[str, Any]] = [
+    {
+        "id": "IDENTITY-001",
+        "type": "identity_comparison",
+        "description": "Using 'is' with string literal - should use '=='",
+        "check": "is_string_literal",
+        "severity": "medium",
+    },
+    {
+        "id": "IDENTITY-002",
+        "type": "identity_comparison",
+        "description": "Using 'is' with integer literal - should use '=='",
+        "check": "is_integer_literal",
+        "severity": "medium",
+    },
+    {
+        "id": "IDENTITY-003",
+        "type": "identity_comparison",
+        "description": "Using 'is' with None - should use 'is' (correct usage)",
+        "check": "is_none",
+        "severity": "info",
+    },
+]
+
+# Exclude None check from being flagged (correct usage)
+IDENTITY_LITERAL_EXCLUDES = {"None", "True", "False"}
+
 NAMING_INCONSISTENCY_PATTERNS: List[Dict[str, Any]] = [
     {
         "id": "NAMING-001",
@@ -171,6 +198,42 @@ NAMING_INCONSISTENCY_PATTERNS: List[Dict[str, Any]] = [
 # --------------------------------------------------------------------------
 # AST Visitors
 # --------------------------------------------------------------------------
+
+class _IdentityComparisonVisitor(ast.NodeVisitor):
+    """Visitor to detect identity comparison with literals (AI bug pattern)."""
+
+    def __init__(self):
+        self.changes: List[str] = []
+
+    def visit_Compare(self, node: ast.Compare):
+        """Check for 'is' comparisons with literals."""
+        for op in node.ops:
+            if isinstance(op, ast.Is):
+                # Check if any operand is a literal (string, int, float)
+                for comparator in node.comparators:
+                    if isinstance(comparator, ast.Constant):
+                        value = comparator.value
+                        # Skip None, True, False - these are correct to use with 'is'
+                        if value is None or value is True or value is False:
+                            continue
+                        # Flag string and numeric literals
+                        if isinstance(value, (str, int, float)):
+                            self.changes.append(
+                                f"IDENTITY-COMPARE: Using 'is' with {type(value).__name__} literal "
+                                f"'{value}' at line {node.lineno}. Use '==' instead."
+                            )
+                    # Also check the left side of the comparison
+                # Check left side too (e.g., "success" is x)
+                if isinstance(node.left, ast.Constant):
+                    value = node.left.value
+                    if value is not None and value is not True and value is not False:
+                        if isinstance(value, (str, int, float)):
+                            self.changes.append(
+                                f"IDENTITY-COMPARE: Using 'is' with {type(value).__name__} literal "
+                                f"'{value}' at line {node.lineno}. Use '==' instead."
+                            )
+        self.generic_visit(node)
+
 
 class _AIBugVisitor(ast.NodeVisitor):
     """AST visitor to detect AI bug patterns."""
@@ -629,6 +692,24 @@ class AIBugRule(Rule):
         naming_visitor.visit(tree)
         changes.extend(naming_visitor.changes)
 
+        # Check for identity comparison with literals (AI bug pattern)
+        identity_visitor = _IdentityComparisonVisitor()
+        identity_visitor.visit(tree)
+        changes.extend(identity_visitor.changes)
+
+        # Run new visitor patterns
+        insecure_visitor = _InsecurePatternVisitor(code_file.content)
+        insecure_visitor.visit(tree)
+        changes.extend(insecure_visitor.changes)
+
+        quality_visitor = _QualityPatternVisitor(code_file.content)
+        quality_visitor.visit(tree)
+        changes.extend(quality_visitor.changes)
+
+        logic_visitor = _LogicBugVisitor(code_file.content)
+        logic_visitor.visit(tree)
+        changes.extend(logic_visitor.changes)
+
         # Build markers from changes
         for change in changes:
             self._marker_counter += 1
@@ -667,6 +748,10 @@ class AIBugRule(Rule):
             "FAKE-PARAM": ("fake_parameter", "low"),
             "REDUNDANT-I/O": ("redundant_io", "medium"),
             "NAMING-INCONSISTENCY": ("naming_inconsistency", "info"),
+            "IDENTITY-COMPARE": ("identity_comparison", "medium"),
+            "AI-INSECURE-": ("ai_security", "high"),
+            "AI-QUALITY-": ("ai_quality", "medium"),
+            "AI-LOGIC-": ("ai_logic", "medium"),
         }
 
         issue_type = "ai_bug"
@@ -697,19 +782,319 @@ class AIBugRule(Rule):
         )
 
 
+# Additional AI bug visitors
+
+class _InsecurePatternVisitor(ast.NodeVisitor):
+    """Visitor to detect AI-generated insecure code patterns."""
+
+    def __init__(self, content: str):
+        self.content = content
+        self.changes = []
+        self.lines = content.splitlines()
+
+    def _get_func_name(self, node):
+        if isinstance(node, ast.Name):
+            return node.id
+        if isinstance(node, ast.Attribute):
+            base = self._get_func_name(node.value)
+            return f"{base}.{node.attr}" if base else node.attr
+        return ""
+
+    def _get_call_args(self, node):
+        args = []
+        for arg in node.args:
+            if isinstance(arg, ast.Constant):
+                args.append(repr(arg.value))
+            elif isinstance(arg, ast.Name):
+                args.append(arg.id)
+            else:
+                args.append("...")
+        for kw in node.keywords:
+            if hasattr(kw, "arg") and kw.arg:
+                args.append(f"{kw.arg}=...")
+        return ",".join(args)
+
+    def visit_Call(self, node):
+        func = self._get_func_name(node.func)
+        args_str = self._get_call_args(node)
+        line_num = getattr(node, "lineno", 1)
+
+        if func in ("eval", "exec", "compile"):
+            self.changes.append(f"AI-INSECURE-001: {func}() called at line {line_num}")
+
+        if func in ("subprocess.run", "subprocess.call", "subprocess.Popen", "os.system", "os.popen"):
+            if "shell=True" in args_str or func in ("os.system", "os.popen"):
+                self.changes.append(f"AI-INSECURE-002: {func}() with shell=True at line {line_num}")
+
+        if "requests.get" in func or "requests.post" in func:
+            if "timeout" not in args_str:
+                self.changes.append(f"AI-INSECURE-003: {func}() without timeout at line {line_num}")
+
+        if "pickle.loads" in func or "pickle.load" in func:
+            self.changes.append(f"AI-INSECURE-004: {func}() called at line {line_num}")
+
+        if "hashlib.md5" in func or "hashlib.sha1" in func:
+            self.changes.append(f"AI-INSECURE-005: Weak crypto {func}() at line {line_num}")
+
+        if "verify=False" in args_str or "verify = False" in args_str:
+            self.changes.append(f"AI-INSECURE-006: SSL verify disabled at line {line_num}")
+
+        if "yaml.unsafe_load" in func or ("yaml.load" in func and "safe" not in func):
+            self.changes.append(f"AI-INSECURE-007: yaml.load() without safe loader at line {line_num}")
+
+        if "ssl._create_unverified_context" in func:
+            self.changes.append(f"AI-INSECURE-008: SSL verification disabled at line {line_num}")
+
+        self.generic_visit(node)
+
+
+class _QualityPatternVisitor(ast.NodeVisitor):
+    """Visitor to detect AI quality issues."""
+
+    def __init__(self, content: str):
+        self.content = content
+        self.changes = []
+        self.lines = content.splitlines()
+
+    def _get_func_name(self, node):
+        if isinstance(node, ast.Name):
+            return node.id
+        if isinstance(node, ast.Attribute):
+            base = self._get_func_name(node.value)
+            return f"{base}.{node.attr}" if base else node.attr
+        return ""
+
+    def visit_FunctionDef(self, node):
+        line_num = getattr(node, "lineno", 1)
+
+        for default, arg_node in zip(node.args.defaults, node.args.args[-len(node.args.defaults):]):
+            if isinstance(default, (ast.List, ast.Dict, ast.Set)):
+                arg_name = getattr(arg_node, "arg", "?")
+                self.changes.append(
+                    f"AI-QUALITY-001: Mutable default argument '{arg_name}=[]' or '{arg_name}={{}}' at line {line_num}"
+                )
+
+        self.generic_visit(node)
+
+    def visit_Call(self, node):
+        func = self._get_func_name(node.func)
+        args_str = self._get_call_args(node)
+        line_num = getattr(node, "lineno", 1)
+
+        if func == "range" and len(node.args) > 0:
+            first_arg = node.args[0]
+            if isinstance(first_arg, ast.Call):
+                if self._get_func_name(first_arg.func) == "len":
+                    self.changes.append(f"AI-QUALITY-002: Inefficient 'for i in range(len(x))' pattern at line {line_num}")
+
+        if func == "time.sleep":
+            prev = "\n".join(self.lines[max(0, line_num - 5) : line_num])
+            if "while True" in prev or "while 1" in prev:
+                self.changes.append(f"AI-QUALITY-003: time.sleep() in while True loop at line {line_num}")
+
+        self.generic_visit(node)
+
+    def _get_call_args(self, node):
+        args = []
+        for arg in node.args:
+            if isinstance(arg, ast.Constant):
+                args.append(repr(arg.value))
+            elif isinstance(arg, ast.Name):
+                args.append(arg.id)
+            else:
+                args.append("...")
+        for kw in node.keywords:
+            if hasattr(kw, "arg") and kw.arg:
+                args.append(f"{kw.arg}=...")
+        return ",".join(args)
+
+
+class _LogicBugVisitor(ast.NodeVisitor):
+    """Visitor to detect AI logic bugs."""
+
+    def __init__(self, content: str):
+        self.content = content
+        self.changes = []
+        self.lines = content.splitlines()
+
+    def visit_Compare(self, node):
+        line_num = getattr(node, "lineno", 1)
+
+        for comparator in node.comparators:
+            if isinstance(comparator, ast.Constant) and comparator.value is None:
+                for op in node.ops:
+                    if isinstance(op, ast.Eq):
+                        self.changes.append(f"AI-LOGIC-001: '== None' should be 'is None' at line {line_num}")
+
+        for op in node.ops:
+            if isinstance(op, ast.Is):
+                for comparator in node.comparators:
+                    if isinstance(comparator, ast.Constant) and isinstance(comparator.value, (str, int, float)):
+                        self.changes.append(f"AI-LOGIC-002: 'is' with {type(comparator.value).__name__} literal at line {line_num}")
+                if isinstance(node.left, ast.Constant) and isinstance(node.left.value, (str, int, float)):
+                    self.changes.append(f"AI-LOGIC-002: 'is' with {type(node.left.value).__name__} literal at line {line_num}")
+
+        self.generic_visit(node)
+
+    def visit_ExceptHandler(self, node):
+        line_num = getattr(node, "lineno", 1)
+        if len(node.body) == 0:
+            self.changes.append(f"AI-LOGIC-003: Empty 'except:' block at line {line_num}")
+        elif len(node.body) == 1:
+            stmt = node.body[0]
+            if isinstance(stmt, ast.Pass) or (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant) and stmt.value.value is None):
+                self.changes.append(f"AI-LOGIC-003: Bare 'except:' with only 'pass' at line {line_num}")
+        self.generic_visit(node)
+
+    def visit_Try(self, node):
+        for stmt in getattr(node, "finalbody", []):
+            if isinstance(stmt, ast.Return):
+                line_num = getattr(stmt, "lineno", 1)
+                self.changes.append(f"AI-LOGIC-004: 'return' inside 'finally' block at line {line_num}")
+        self.generic_visit(node)
+
+    def visit_For(self, node):
+        """Check for off-by-one errors in range(len()) patterns."""
+        line_num = getattr(node, "lineno", 1)
+
+        # Check for range(len(x)) patterns
+        if isinstance(node.iter, ast.Call):
+            func_name = self._get_func_name(node.iter.func)
+            if func_name == 'range':
+                # Check if range contains len() call
+                if len(node.iter.args) >= 1:
+                    first_arg = node.iter.args[0]
+                    if isinstance(first_arg, ast.Call):
+                        inner_func = self._get_func_name(first_arg.func)
+                        if inner_func == 'len':
+                            # Check if there's a subscript access that might be out of bounds
+                            self._check_range_len_bounds(node, line_num)
+
+        self.generic_visit(node)
+
+    def _check_range_len_bounds(self, for_node, line_num):
+        """Check for off-by-one patterns in range(len()) loops."""
+        # Look for comparisons like: if i == len(items)
+        for child in ast.walk(for_node):
+            if isinstance(child, ast.Compare):
+                # Check for i == len(x) pattern
+                if isinstance(child.left, ast.Name):
+                    var_name = child.left.id
+                    for comparator in child.comparators:
+                        if isinstance(comparator, ast.Call):
+                            comp_func = self._get_func_name(comparator.func)
+                            if comp_func == 'len':
+                                for op in child.ops:
+                                    if isinstance(op, (ast.Eq, ast.Is)):
+                                        self.changes.append(
+                                            f"AI-LOGIC-010: Off-by-one: '{var_name} == len(...)' comparison in loop at line {line_num}"
+                                        )
+
+    def visit_Subscript(self, node):
+        """Check for out-of-bounds array access patterns."""
+        line_num = getattr(node, "lineno", 1)
+
+        # Check for items[len(items)] pattern
+        if isinstance(node.value, ast.Name):
+            var_name = node.value.id
+            if isinstance(node.slice, ast.Call):
+                slice_func = self._get_func_name(node.slice.func)
+                if slice_func == 'len' and len(node.slice.args) >= 1:
+                    if isinstance(node.slice.args[0], ast.Name):
+                        if node.slice.args[0].id == var_name:
+                            self.changes.append(
+                                f"AI-LOGIC-010: Off-by-one: '{var_name}[len({var_name})]' accesses element at invalid index at line {line_num}"
+                            )
+
+        self.generic_visit(node)
+
+    def visit_If(self, node):
+        """Check for inverted boolean conditions and wrong comparisons."""
+        line_num = getattr(node, "lineno", 1)
+
+        # Check for inverted auth patterns: if not is_admin(): grant_access()
+        if isinstance(node.test, ast.UnaryOp) and isinstance(node.test.op, ast.Not):
+            func_call = node.test.operand
+            if isinstance(func_call, ast.Call):
+                func_name = self._get_func_name(func_call.func)
+                if 'auth' in func_name.lower() or 'admin' in func_name.lower() or 'permission' in func_name.lower():
+                    # Check if the body grants access or returns success
+                    for stmt in node.body:
+                        if self._grants_access(stmt):
+                            self.changes.append(
+                                f"AI-LOGIC-011: Inverted boolean: 'if not {func_name}()' followed by access grant at line {line_num}"
+                            )
+
+        # Check for missing 'not' in auth checks: if user.is_authenticated: return
+        if isinstance(node.test, ast.Attribute):
+            attr_name = node.test.attr
+            if 'auth' in attr_name.lower() or 'permission' in attr_name.lower() or 'admin' in attr_name.lower():
+                if isinstance(node.test.value, ast.Name):
+                    # Pattern: if user.is_authenticated: return (without else)
+                    if len(node.body) > 0 and isinstance(node.body[0], ast.Return):
+                        # Check if there's no else clause (might be inverted logic)
+                        self.changes.append(
+                            f"AI-LOGIC-011: Possible inverted check: 'if {node.test.value.id}.{attr_name}' without 'not' at line {line_num}"
+                        )
+
+        # Check for wrong comparison operators (wrong direction)
+        if isinstance(node.test, ast.Compare):
+            for op in node.test.ops:
+                if isinstance(op, ast.Lt):
+                    # Could be wrong: should be <=
+                    self.changes.append(
+                        f"AI-LOGIC-013: Possible wrong comparison: '<' used, consider '<=' at line {line_num}"
+                    )
+                elif isinstance(op, ast.Gt):
+                    # Could be wrong: should be >=
+                    self.changes.append(
+                        f"AI-LOGIC-013: Possible wrong comparison: '>' used, consider '>=' at line {line_num}"
+                    )
+
+        self.generic_visit(node)
+
+    def _grants_access(self, stmt):
+        """Check if a statement grants access or returns success."""
+        if isinstance(stmt, ast.Return):
+            if isinstance(stmt.value, ast.Constant):
+                if stmt.value.value is True:
+                    return True
+        if isinstance(stmt, ast.Expr):
+            # Could be function call that grants access
+            if isinstance(stmt.value, ast.Call):
+                func_name = self._get_func_name(stmt.value.func)
+                if 'grant' in func_name.lower() or 'allow' in func_name.lower() or 'access' in func_name.lower():
+                    return True
+        return False
+
+    def _get_func_name(self, node):
+        """Get the full function name from an AST node."""
+        if isinstance(node, ast.Name):
+            return node.id
+        elif isinstance(node, ast.Attribute):
+            name = self._get_func_name(node.value)
+            return f"{name}.{node.attr}" if name else node.attr
+        return ""
+
+
 # --------------------------------------------------------------------------
 # Module exports
 # --------------------------------------------------------------------------
 
 __all__ = [
-    'AIBugRule',
-    'RESOURCE_LEAK_PATTERNS',
-    'BOUNDARY_CHECK_PATTERNS',
-    'PHANTOM_PACKAGE_PATTERNS',
-    'FAKE_PARAM_PATTERNS',
-    'NAMING_INCONSISTENCY_PATTERNS',
-    '_BoundaryCheckVisitor',
-    '_RedundantIOVisitor',
-    '_FakeParamVisitor',
-    '_NamingInconsistencyVisitor',
+    "AIBugRule",
+    "RESOURCE_LEAK_PATTERNS",
+    "BOUNDARY_CHECK_PATTERNS",
+    "PHANTOM_PACKAGE_PATTERNS",
+    "FAKE_PARAM_PATTERNS",
+    "IDENTITY_COMPARISON_PATTERNS",
+    "NAMING_INCONSISTENCY_PATTERNS",
+    "_BoundaryCheckVisitor",
+    "_RedundantIOVisitor",
+    "_FakeParamVisitor",
+    "_IdentityComparisonVisitor",
+    "_NamingInconsistencyVisitor",
+    "_InsecurePatternVisitor",
+    "_QualityPatternVisitor",
+    "_LogicBugVisitor",
 ]

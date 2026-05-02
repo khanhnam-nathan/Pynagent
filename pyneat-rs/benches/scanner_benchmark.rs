@@ -5,7 +5,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::time::Duration;
 
-use pyneat_rs::{RustScanner, JavaScriptScanner, GoScanner, LanguageScanner};
+use pyneat_rs::parse;
 
 const SMALL_CODE: &str = r#"
 def process():
@@ -87,104 +87,109 @@ class UserManager:
         return None
 "#;
 
-fn bench_rust_scanner(c: &mut Criterion) {
-    let mut group = c.benchmark_group("rust_scanner");
+// --------------------------------------------------------------------------
+// File Size Benchmarks
+// --------------------------------------------------------------------------
 
-    group.bench_function("parse_small", |b| {
-        let scanner = RustScanner::new();
+fn bench_parse_sizes(c: &mut Criterion) {
+    let mut group = c.benchmark_group("parse_by_size");
+
+    group.bench_function("small_10_lines", |b| {
         b.iter(|| {
-            let _ = scanner.parse(black_box(SMALL_CODE));
+            let _ = parse(black_box(SMALL_CODE));
         });
     });
 
-    group.bench_function("parse_medium", |b| {
-        let scanner = RustScanner::new();
+    group.bench_function("medium_50_lines", |b| {
         b.iter(|| {
-            let _ = scanner.parse(black_box(MEDIUM_CODE));
+            let _ = parse(black_box(MEDIUM_CODE));
         });
     });
 
-    group.bench_function("parse_large", |b| {
-        let scanner = RustScanner::new();
+    group.bench_function("large_200_lines", |b| {
         b.iter(|| {
-            let _ = scanner.parse(black_box(LARGE_CODE));
-        });
-    });
-
-    group.finish();
-}
-
-fn bench_javascript_scanner(c: &mut Criterion) {
-    let mut group = c.benchmark_group("javascript_scanner");
-
-    let js_code = r#"
-const utils = require('utils');
-
-function processData(data) {
-    if (data != null) {
-        console.log("Processing");
-    }
-    return data;
-}
-
-function calculate(x, y) {
-    if (x === 200) {
-        return x + y;
-    }
-    return x - y;
-}
-"#;
-
-    group.bench_function("parse_js", |b| {
-        let scanner = JavaScriptScanner;
-        b.iter(|| {
-            let _ = scanner.parse(black_box(js_code));
+            let _ = parse(black_box(LARGE_CODE));
         });
     });
 
     group.finish();
 }
 
-fn bench_go_scanner(c: &mut Criterion) {
-    let mut group = c.benchmark_group("go_scanner");
-
-    let go_code = r#"
-package main
-
-import "fmt"
-
-func process(data string) string {
-    if data != "" {
-        fmt.Println(data)
-    }
-    return data
-}
-"#;
-
-    group.bench_function("parse_go", |b| {
-        let scanner = GoScanner;
-        b.iter(|| {
-            let _ = scanner.parse(black_box(go_code));
-        });
-    });
-
-    group.finish();
-}
+// --------------------------------------------------------------------------
+// Throughput Benchmarks
+// --------------------------------------------------------------------------
 
 fn bench_throughput(c: &mut Criterion) {
     let mut group = c.benchmark_group("throughput");
     group.throughput(criterion::Throughput::Bytes(MEDIUM_CODE.len() as u64));
 
-    let scanner = RustScanner::new();
-
     group.bench_function("mb_per_second", |b| {
         b.iter(|| {
-            let _ = scanner.parse(black_box(MEDIUM_CODE));
+            let _ = parse(black_box(MEDIUM_CODE));
         });
     });
 
     group.finish();
 }
+
+// --------------------------------------------------------------------------
+// Batch Scan (Item 4a: Real-World Simulation)
+// --------------------------------------------------------------------------
+
+/// Benchmark scanning multiple files (simulates real-world project scanning).
+/// Uses repeated code samples to simulate ~200 files of mixed sizes.
+fn bench_batch_scan(c: &mut Criterion) {
+    let mut group = c.benchmark_group("batch_scan");
+
+    // Simulate scanning 200 files: mix of small, medium, and large files
+    let files: Vec<&str> = (0..200)
+        .map(|i| match i % 3 {
+            0 => SMALL_CODE,
+            1 => MEDIUM_CODE,
+            _ => LARGE_CODE,
+        })
+        .collect();
+
+    group.bench_function("scan_200_files", |b| {
+        b.iter(|| {
+            for code in &files {
+                let _ = parse(black_box(*code));
+            }
+        });
+    });
+
+    group.throughput(criterion::Throughput::Elements(200));
+    group.finish();
+}
+
+// --------------------------------------------------------------------------
+// Full Pipeline Benchmark
+// --------------------------------------------------------------------------
+
+/// Benchmark the full rule evaluation pipeline (parse + all rules).
+fn bench_full_pipeline(c: &mut Criterion) {
+    let mut group = c.benchmark_group("full_pipeline");
+
+    let tree = parse(LARGE_CODE).expect("Should parse");
+    let rules = pyneat_rs::rules::security::all_security_rules();
+
+    group.bench_function("parse_and_scan_large", |b| {
+        b.iter(|| {
+            let mut findings_count = 0;
+            for rule in &rules {
+                findings_count += rule.detect(black_box(&tree), LARGE_CODE).len();
+            }
+            black_box(findings_count);
+        });
+    });
+
+    group.throughput(criterion::Throughput::Bytes(LARGE_CODE.len() as u64));
+    group.finish();
+}
+
+// --------------------------------------------------------------------------
+// Criterion Group
+// --------------------------------------------------------------------------
 
 criterion_group! {
     name = benches;
@@ -193,9 +198,9 @@ criterion_group! {
         .warm_up_time(Duration::from_secs(1))
         .sample_size(50);
     targets =
-        bench_rust_scanner,
-        bench_javascript_scanner,
-        bench_go_scanner,
+        bench_parse_sizes,
         bench_throughput,
+        bench_batch_scan,
+        bench_full_pipeline,
 }
 criterion_main!(benches);

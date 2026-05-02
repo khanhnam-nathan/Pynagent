@@ -17,10 +17,46 @@
 
 use std::collections::HashSet;
 
+use once_cell::sync::Lazy;
 use regex::Regex;
 
 use super::super::ln_ast::LnAst;
 use super::super::base::{LangRule, LangFinding, LangFix};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pre-compiled regex patterns (static, lazily initialized once)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// JS-SEC-001: DOM XSS pattern - innerHTML/outerHTML with user input
+static RE_DOM_XSS: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?:innerHTML|outerHTML|insertAdjacentHTML|document\.write)\s*\([^)]*(?:request|input|param|query|user|data|location)"#).unwrap()
+});
+
+/// JS-SEC-006: Math.random pattern
+static RE_MATH_RANDOM: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"Math\.random\s*\(\s*\)").unwrap()
+});
+
+/// JS-SEC-006: Deprecated crypto.createCipher/createDecipher pattern
+static RE_DEPRECATED_CRYPTO: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"crypto\.create(?:Cipher|Cipheriv|Decipher|Decipheriv)\b").unwrap()
+});
+
+/// JS-SEC-007: Unsafe redirect pattern
+/// Only flags when the redirect target actually comes from user input (request.args/form/params)
+static RE_UNSAFE_REDIRECT: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?:redirect|href|location)\s*=\s*[^;]*(?:request\.(?:args|form|values|json|data|params)|\$\{|template)"#).unwrap()
+});
+
+/// JS-SEC-009: SQL injection pattern (string concatenation)
+static RE_SQL_CONCAT: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?:SELECT|INSERT|UPDATE|DELETE|DROP|ALTER)\s+.+\+.+|"[^"]*"\s*\+"#).unwrap()
+});
+
+/// JS-SEC-021: Hardcoded IP address pattern
+static RE_IP_ADDRESS: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b"#).unwrap()
+});
 
 /// Helper: get line byte offsets (0-indexed lines).
 fn get_line_offsets(code: &str, line: usize) -> (usize, usize) {
@@ -117,11 +153,7 @@ impl LangRule for JsDomXss {
         }
 
         // Also detect direct patterns
-        let dom_xss_pattern = Regex::new(
-            r#"(?:innerHTML|outerHTML|insertAdjacentHTML|document\.write)\s*\([^)]*(?:request|input|param|query|user|data|location)"#
-        ).unwrap();
-
-        for m in dom_xss_pattern.find_iter(code) {
+        for m in RE_DOM_XSS.find_iter(code) {
             let line = code[..m.start()].matches('\n').count() + 1;
             if !findings.iter().any(|f: &LangFinding| f.line == line) {
                 let (start, end) = get_line_offsets(code, line);
@@ -485,8 +517,38 @@ impl LangRule for JsHardcodedSecret {
         findings
     }
 
-    fn fix(&self, _finding: &LangFinding, _code: &str) -> Option<LangFix> { None }
-    fn supports_auto_fix(&self) -> bool { false }
+    fn fix(&self, finding: &LangFinding, code: &str) -> Option<LangFix> {
+        let line_text = code.lines().nth(finding.line.saturating_sub(1))?;
+        let snippet = &finding.snippet;
+
+        // Extract the secret variable name from the snippet
+        let var_name_re = Regex::new(r"(?i)(?:const\s+)?((?:api[_-]?)?(?:key|secret|password|token|pass(?:word)?|bearer|auth[_-]?token|access[_-]?token|jwt|private[_-]?key|aws[_-]?secret))").ok()?;
+        let var_name = var_name_re.captures(snippet)?.get(1)?.as_str().to_uppercase().replace("-", "_");
+
+        let replacement = if snippet.contains("= \"") || snippet.contains("= '") {
+            // Replace the hardcoded value with process.env.VARIABLE_NAME
+            let var_part_re = Regex::new(r#"(?i)(?:const\s+)?(\w+)\s*[=:]\s*["'][^"']*["']"#).ok()?;
+            if let Some(caps) = var_part_re.captures(snippet) {
+                let name = caps.get(1)?.as_str();
+                format!("{} = process.env.{}", name, var_name)
+            } else {
+                return None;
+            }
+        } else {
+            return None;
+        };
+
+        Some(LangFix {
+            rule_id: self.id().to_string(),
+            original: line_text.to_string(),
+            replacement,
+            start_byte: 0,
+            end_byte: 0,
+            description: format!("Replace hardcoded secret with process.env.{}", var_name),
+        })
+    }
+
+    fn supports_auto_fix(&self) -> bool { true }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -515,8 +577,7 @@ impl LangRule for JsWeakCrypto {
         });
 
         if has_security_context {
-            let math_random = Regex::new(r"Math\.random\s*\(\s*\)").unwrap();
-            for m in math_random.find_iter(code) {
+            for m in RE_MATH_RANDOM.find_iter(code) {
                 let line = code[..m.start()].matches('\n').count() + 1;
                 let (start, end) = get_line_offsets(code, line);
                 let line_text = get_line_text(code, line).unwrap_or_default();
@@ -569,8 +630,7 @@ impl LangRule for JsWeakCrypto {
         }
 
         // Check for crypto.createCipher (deprecated in Node.js)
-        let deprecated_crypto = Regex::new(r"crypto\.create(?:Cipher|Cipheriv|Decipher|Decipheriv)\b").unwrap();
-        for m in deprecated_crypto.find_iter(code) {
+        for m in RE_DEPRECATED_CRYPTO.find_iter(code) {
             let line = code[..m.start()].matches('\n').count() + 1;
             let (start, end) = get_line_offsets(code, line);
             let line_text = get_line_text(code, line).unwrap_or_default();
@@ -662,11 +722,7 @@ impl LangRule for JsOpenRedirect {
         }
 
         // Also detect regex for URL validation
-        let unsafe_redirect = Regex::new(
-            r#"(?:redirect|href|location)\s*=\s*[^;]*(?:request|input|param|query|url)"#
-        ).unwrap();
-
-        for m in unsafe_redirect.find_iter(code) {
+        for m in RE_UNSAFE_REDIRECT.find_iter(code) {
             let line = code[..m.start()].matches('\n').count() + 1;
             if !findings.iter().any(|f: &LangFinding| f.line == line) {
                 let (start, end) = get_line_offsets(code, line);
@@ -800,7 +856,7 @@ impl LangRule for JsSqlInjection {
             "ALTER", "CREATE", "GRANT", "REVOKE",
         ];
 
-        let sql_pattern = Regex::new(r#"(?:SELECT|INSERT|UPDATE|DELETE|DROP|ALTER)\s+.+\+.+|"[^"]*"\s*\+"#).unwrap();
+        let sql_pattern = &*RE_SQL_CONCAT;
 
         for call in &tree.calls {
             let callee_lower = call.callee.to_lowercase();
@@ -1500,11 +1556,10 @@ impl LangRule for JsHardcodedIp {
 
     fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
         let mut findings = vec![];
-        let re = regex::Regex::new(r#"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b"#).unwrap();
         for (i, line_text) in code.lines().enumerate() {
             let stripped = line_text.trim();
             if !stripped.is_empty() && !stripped.starts_with("//") && !stripped.starts_with("*") {
-                for m in re.find_iter(line_text) {
+                for m in RE_IP_ADDRESS.find_iter(line_text) {
                     let ip = m.as_str();
                     if ip != "0.0.0.0" && ip != "127.0.0.1" && ip != "255.255.255.255" {
                         findings.push(LangFinding::new(
@@ -1655,6 +1710,1089 @@ impl LangRule for JsProtoPollution {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Extended Security Rules (JS-SEC-026 to JS-SEC-038)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// JS-SEC-037: SSRF via Internal IP/Cloud Metadata
+/// Severity: high | CWE-918
+/// Checks if HTTP calls contain URLs with internal IPs or cloud metadata endpoints
+pub struct JsSsrfInternalIp;
+
+impl LangRule for JsSsrfInternalIp {
+    fn id(&self) -> &str { "JS-SEC-037" }
+    fn name(&self) -> &str { "SSRF: Internal IP / Cloud Metadata Endpoint Access" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let http_libraries = ["fetch", "axios", "got", "request", "node-fetch", "nodeFetch", "superagent", "ajax"];
+
+        let has_http_import = tree.imports.iter().any(|imp| {
+            http_libraries.iter().any(|lib| {
+                imp.module.to_lowercase().contains(lib)
+            })
+        });
+
+        if !has_http_import && !tree.calls.iter().any(|c| {
+            http_libraries.iter().any(|lib| c.callee.to_lowercase().contains(lib))
+        }) {
+            return findings;
+        }
+
+        let internal_ip_patterns = [
+            (r#"127\.0\.0\.1"#, "loopback address 127.0.0.1"),
+            (r#"localhost"#, "localhost hostname"),
+            (r#"169\.254\.169\.254"#, "AWS cloud metadata endpoint"),
+            (r#"169\.254\.169\.253"#, "Azure cloud metadata endpoint"),
+            (r#"10\.\d{1,3}\.\d{1,3}\.\d{1,3}"#, "private IP range 10.x.x.x"),
+            (r#"192\.168\.\d{1,3}\.\d{1,3}"#, "private IP range 192.168.x.x"),
+            (r#"172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"#, "private IP range 172.16-31.x.x"),
+            (r#"metadata\.google\.internal"#, "GCP metadata hostname"),
+            (r#"metadata\.azure\.com"#, "Azure metadata hostname"),
+            (r#"metadata\.internal"#, "generic metadata hostname"),
+        ];
+
+        for call in &tree.calls {
+            if http_libraries.iter().any(|lib| call.callee.to_lowercase().contains(lib)) {
+                for arg in &call.arguments {
+                    for (pattern, desc) in &internal_ip_patterns {
+                        if let Ok(re) = Regex::new(pattern) {
+                            if re.is_match(arg) {
+                                let (start, end) = get_line_offsets(code, call.start_line);
+                                let line_text = get_line_text(code, call.start_line).unwrap_or_default();
+
+                                findings.push(LangFinding {
+                                    rule_id: self.id().to_string(),
+                                    severity: self.severity().to_string(),
+                                    line: call.start_line,
+                                    column: 0,
+                                    start_byte: start,
+                                    end_byte: end,
+                                    snippet: line_text.trim().to_string(),
+                                    problem: format!(
+                                        "SSRF risk: HTTP call targets {}. CWE-918: Attackers can access \
+                                        internal services, cloud metadata (credentials), or internal APIs.",
+                                        desc
+                                    ),
+                                    fix_hint: "Block internal IP ranges (10.x, 172.16-31.x, 192.168.x, 127.x, 169.254.x). \
+                                        Validate URLs against allowlist. Use URL parser to verify hostname before fetching. \
+                                        Example: const hostname = new URL(url).hostname; if (isBlocked(hostname)) throw new Error('Invalid URL');".to_string(),
+                                    auto_fix_available: false,
+                                });
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn fix(&self, _finding: &LangFinding, _code: &str) -> Option<LangFix> { None }
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+/// JS-SEC-038: Insecure JWT Verification (Extended)
+/// Severity: critical | CWE-347
+/// Extended JWT checks: algorithm none, weak secrets, null/false secrets
+pub struct JsInsecureJwtV2;
+
+impl LangRule for JsInsecureJwtV2 {
+    fn id(&self) -> &str { "JS-SEC-038" }
+    fn name(&self) -> &str { "Insecure JWT Verification (Extended Checks)" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let jwt_libraries = ["jsonwebtoken", "jwt", "jwks-rsa", "@panva/jose", "jose"];
+        let has_jwt = tree.imports.iter().any(|imp| {
+            jwt_libraries.iter().any(|lib| imp.module.to_lowercase().contains(lib))
+        });
+
+        let insecure_patterns = [
+            (r#"algorithms\s*:\s*\[\s*["']?none["']?\s*\]"#, "JWT configured with 'none' algorithm"),
+            (r#"allowInsecureAlgorithm\s*:\s*true"#, "JWT allows insecure algorithm"),
+            (r#"verify\s*\([^)]*,\s*(?:null|false)\s*[,)]"#, "JWT verify with null/false secret"),
+            (r#"verify\s*\([^)]*,\s*undefined\s*[,)]"#, "JWT verify with undefined secret"),
+            (r#"algorithms\s*:\s*\[\s*["']?HS256["']?\s*\].*sign(?:?!.*RS256)"#, "HS256 used but should use RS256 for asymmetric"),
+        ];
+
+        let weak_secret_patterns = [
+            (r#"verify\s*\([^,]+,\s*["'][a-zA-Z0-9]{1,15}["']"#, "JWT verify with short/weak secret (< 16 chars)"),
+            (r#"verify\s*\([^,]+,\s*["'][a-zA-Z]{1,20}["']"#, "JWT verify with weak alphanumeric secret"),
+            (r#"secret\s*[=:]\s*["'][a-zA-Z0-9]{1,10}["']"#, "Weak JWT secret detected"),
+            (r#"secret\s*[=:]\s*["']?(?:secret|password|test|changeme|admin)"#, "Placeholder/default JWT secret"),
+        ];
+
+        if !has_jwt && !tree.calls.iter().any(|c| {
+            jwt_libraries.iter().any(|lib| c.callee.to_lowercase().contains(lib))
+                || c.callee.contains("verify")
+        }) {
+            return findings;
+        }
+
+        for (line_idx, line) in code.lines().enumerate() {
+            let line_num = line_idx + 1;
+
+            for (pattern, desc) in &insecure_patterns {
+                if let Ok(re) = Regex::new(pattern) {
+                    if re.is_match(line) {
+                        let (start, end) = get_line_offsets(code, line_num);
+
+                        findings.push(LangFinding {
+                            rule_id: self.id().to_string(),
+                            severity: self.severity().to_string(),
+                            line: line_num,
+                            column: 0,
+                            start_byte: start,
+                            end_byte: end,
+                            snippet: line.trim().to_string(),
+                            problem: format!(
+                                "Insecure JWT configuration: {}. CWE-347: This can allow attackers \
+                                to forge tokens, bypass authentication, or impersonate users.",
+                                desc
+                            ),
+                            fix_hint: "Always use strong secrets (32+ chars). Use RS256 for asymmetric JWT. \
+                                Never use 'none' algorithm. Validate all JWT parameters. \
+                                Example: jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['RS256'] });".to_string(),
+                            auto_fix_available: false,
+                        });
+                    }
+                }
+            }
+
+            for (pattern, desc) in &weak_secret_patterns {
+                if let Ok(re) = Regex::new(pattern) {
+                    if re.is_match(line) && !line.contains("algorithms") {
+                        let (start, end) = get_line_offsets(code, line_num);
+
+                        findings.push(LangFinding {
+                            rule_id: self.id().to_string(),
+                            severity: self.severity().to_string(),
+                            line: line_num,
+                            column: 0,
+                            start_byte: start,
+                            end_byte: end,
+                            snippet: line.trim().to_string(),
+                            problem: format!(
+                                "Weak JWT secret: {}. CWE-347: Weak secrets can be guessed or brute-forced, \
+                                allowing attackers to forge valid JWTs.",
+                                desc
+                            ),
+                            fix_hint: "Use cryptographically strong secrets (32+ random characters). \
+                                Store secrets in environment variables or secure vaults. \
+                                Use RS256/ES256 for production (asymmetric algorithms).".to_string(),
+                            auto_fix_available: false,
+                        });
+                    }
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn fix(&self, _finding: &LangFinding, _code: &str) -> Option<LangFix> { None }
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JS-CRYPT-001: Insecure TLS/Crypto in JavaScript
+// Severity: high | CWE-327, CWE-295
+// Detects insecure TLS/certificate verification bypass patterns
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JsInsecureTlsCrypto;
+
+impl LangRule for JsInsecureTlsCrypto {
+    fn id(&self) -> &str { "JS-CRYPT-001" }
+    fn name(&self) -> &str { "Insecure TLS / Certificate Verification Bypass" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        // Patterns for insecure TLS/crypto
+        let insecure_patterns = [
+            // NODE_TLS_REJECT_UNAUTHORIZED bypass
+            (r#"process\.env\s*\[\s*['"]NODE_TLS_REJECT_UNAUTHORIZED['"]\s*\]\s*=\s*['"]?0['"]?"#, 
+             "NODE_TLS_REJECT_UNAUTHORIZED set to 0 - disables TLS verification"),
+            (r#"NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*['"]?0['"]?"#, 
+             "NODE_TLS_REJECT_UNAUTHORIZED = 0 - disables TLS verification"),
+            
+            // rejectUnauthorized: false in TLS options
+            (r#"rejectUnauthorized\s*:\s*(?:false|0)"#, 
+             "rejectUnauthorized: false - disables TLS certificate verification"),
+            
+            // tls.checkServerIdentity bypass
+            (r#"tls\.checkServerIdentity\s*=\s*(?:()\s*=>\s*\{\}|function\s*\(\)\s*\{\})"#, 
+             "tls.checkServerIdentity set to empty function - bypasses certificate validation"),
+            
+            // crypto deprecated methods
+            (r#"crypto\.createCipher\s*\("#, 
+             "crypto.createCipher() - deprecated, use createCipheriv"),
+            (r#"crypto\.createDecipher\s*\("#, 
+             "crypto.createDecipher() - deprecated, use createDecipheriv"),
+            
+            // TLS version downgrades
+            (r#"tls\.DEFAULT_MIN_VERSION\s*=\s*['"]TLSv1['"]"#, 
+             "tls.DEFAULT_MIN_VERSION = 'TLSv1' - allows TLS 1.0 (deprecated)"),
+            (r#"tls\.DEFAULT_MAX_VERSION\s*=\s*['"]TLSv1\.1['"]"#, 
+             "tls.DEFAULT_MAX_VERSION = 'TLSv1.1' - allows TLS 1.1 (deprecated)"),
+            (r#"tls\.DEFAULT_MIN_VERSION\s*=\s*tls\.TLSVersion\.TLSv1"#, 
+             "tls.DEFAULT_MIN_VERSION = TLSv1 - allows deprecated TLS 1.0"),
+            
+            // secure: false in cookie options
+            (r#"secure\s*:\s*(?:false|0)"#, 
+             "secure: false in cookie - cookies sent over HTTP (not HTTPS)"),
+            
+            // Agent options to disable verification
+            (r#"rejectUnauthorized\s*[=:]\s*(?:false|0)"#, 
+             "rejectUnauthorized disabled in agent - MITM attack possible"),
+            
+            // https agent with verify option
+            (r#"https\.request\s*\([^)]*verify\s*:\s*(?:false|0)"#, 
+             "https.request with verify: false - bypasses certificate verification"),
+        ];
+
+        for (line_idx, line) in code.lines().enumerate() {
+            let line_num = line_idx + 1;
+            
+            // Skip comments
+            let trimmed = line.trim();
+            if trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with("*") {
+                continue;
+            }
+            
+            for (pattern, desc) in &insecure_patterns {
+                if let Ok(re) = Regex::new(pattern) {
+                    if re.is_match(line) {
+                        let (start, end) = get_line_offsets(code, line_num);
+                        
+                        findings.push(LangFinding {
+                            rule_id: self.id().to_string(),
+                            severity: self.severity().to_string(),
+                            line: line_num,
+                            column: 0,
+                            start_byte: start,
+                            end_byte: end,
+                            snippet: line.trim().to_string(),
+                            problem: format!(
+                                "Insecure TLS/Crypto: {}. CWE-295/CWE-327: This pattern disables \
+                                certificate verification or uses deprecated crypto, enabling man-in-the-middle \
+                                attacks and exposing encrypted communications.",
+                                desc
+                            ),
+                            fix_hint: "Never disable TLS verification in production. Use proper certificate \
+                                validation. Replace deprecated crypto.createCipher() with crypto.createCipheriv(). \
+                                Use TLS 1.2 minimum. Set secure: true for cookies.".to_string(),
+                            auto_fix_available: false,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Additional checks using AST
+        for call in &tree.calls {
+            // Check for https.request with rejectUnauthorized: false
+            if call.callee.contains("https.request") || call.callee.contains("https.Agent") {
+                for arg in &call.arguments {
+                    if arg.contains("rejectUnauthorized") && arg.contains("false") {
+                        let (start, end) = get_line_offsets(code, call.start_line);
+                        let line_text = get_line_text(code, call.start_line).unwrap_or_default();
+                        
+                        findings.push(LangFinding {
+                            rule_id: self.id().to_string(),
+                            severity: self.severity().to_string(),
+                            line: call.start_line,
+                            column: 0,
+                            start_byte: start,
+                            end_byte: end,
+                            snippet: line_text.trim().to_string(),
+                            problem: "HTTPS request with rejectUnauthorized: false - TLS verification disabled. \
+                                CWE-295: Man-in-the-middle attacks can intercept all traffic.".to_string(),
+                            fix_hint: "Remove rejectUnauthorized: false from TLS options. \
+                                Use proper certificate validation or system CA certificates.".to_string(),
+                            auto_fix_available: false,
+                        });
+                    }
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn fix(&self, _finding: &LangFinding, _code: &str) -> Option<LangFix> { None }
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GRAPHQL-001: GraphQL Introspection Enabled
+// Severity: medium | CWE-200
+// GraphQL introspection enabled in production exposes schema details
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JsGraphqlIntrospection;
+
+impl LangRule for JsGraphqlIntrospection {
+    fn id(&self) -> &str { "GRAPHQL-001" }
+    fn name(&self) -> &str { "GraphQL Introspection Enabled in Production" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        // Check for GraphQL imports
+        let graphql_imports = ["graphql", "@apollo/server", "apollo-server", "graphql-yoga", "mercurius"];
+        let has_graphql = tree.imports.iter().any(|imp| {
+            graphql_imports.iter().any(|g| imp.module.contains(g))
+        });
+
+        if !has_graphql && !code.contains("graphql") && !code.contains("GraphQL") {
+            return findings;
+        }
+
+        // Patterns for introspection enabled
+        let introspection_patterns = [
+            (r#"introspection\s*:\s*(?:true|1)"#, "introspection: true"),
+            (r#"introspectionSchema\s*\("#, "introspectionSchema() call"),
+            (r#"playground\s*:\s*(?:true|1)"#, "playground: true (deprecated GraphQL Playground)"),
+            (r#"includeStacktraceInErrorResponses\s*:\s*(?:true|1)"#, "includeStacktraceInErrorResponses: true"),
+            (r#"apq\s*:\s*(?:true|1)"#, "APQ (Automatic Persisted Queries) enabled"),
+        ];
+
+        for (line_idx, line) in code.lines().enumerate() {
+            let line_num = line_idx + 1;
+            for (pattern, name) in &introspection_patterns {
+                if let Ok(re) = Regex::new(pattern) {
+                    if re.is_match(line) {
+                        let (start, end) = get_line_offsets(code, line_num);
+                        let line_text = get_line_text(code, line_num).unwrap_or_default();
+
+                        findings.push(LangFinding {
+                            rule_id: self.id().to_string(),
+                            severity: self.severity().to_string(),
+                            line: line_num,
+                            column: 0,
+                            start_byte: start,
+                            end_byte: end,
+                            snippet: line_text.trim().to_string(),
+                            problem: format!(
+                                "GraphQL introspection potentially enabled: {}. CWE-200: Introspection \
+                                exposes your complete schema including hidden fields, making it easier for \
+                                attackers to understand your API structure and find vulnerabilities.",
+                                name
+                            ),
+                            fix_hint: "Disable introspection in production: set introspection: false. \
+                                Use Apollo Server 4: { introspection: false }. For Apollo Server 4+, use \
+                                includeStacktraceInErrorResponses: false. Remove playground in favor of \
+                                dedicated introspection tools for development only.".to_string(),
+                            auto_fix_available: false,
+                        });
+                    }
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn fix(&self, _finding: &LangFinding, _code: &str) -> Option<LangFix> { None }
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GRAPHQL-002: GraphQL Missing Depth Limit
+// Severity: high | CWE-400
+// Without depth limiting, GraphQL is vulnerable to DoS attacks
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JsGraphqlMissingDepthLimit;
+
+impl LangRule for JsGraphqlMissingDepthLimit {
+    fn id(&self) -> &str { "GRAPHQL-002" }
+    fn name(&self) -> &str { "GraphQL Missing Depth Limit / Cost Analysis" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        // Check for GraphQL usage
+        let graphql_imports = ["graphql", "@apollo/server", "apollo-server", "graphql-yoga", "mercurius", "graphql-http"];
+        let has_graphql = tree.imports.iter().any(|imp| {
+            graphql_imports.iter().any(|g| imp.module.contains(g))
+        });
+
+        if !has_graphql && !code.contains("graphql") && !code.contains("GraphQL") {
+            return findings;
+        }
+
+        // Check if depth limit is missing
+        let has_depth_limit = code.contains("maxDepth")
+            || code.contains("depthLimit")
+            || code.contains("depth-limit")
+            || code.contains("CostLimit")
+            || code.contains("costLimit")
+            || code.contains("validationRules");
+
+        if !has_depth_limit {
+            // Check for Apollo Server or graphql-http patterns that should have depth limiting
+            let apollo_patterns = [
+                (r#"ApolloServer\s*\("#, "ApolloServer without depth limiting"),
+                (r#"graphql\s*\(\s*\{"#, "graphql() handler without depth limiting"),
+                (r#"startServer\s*\("#, "GraphQL server startup without depth limiting"),
+            ];
+
+            for (line_idx, line) in code.lines().enumerate() {
+                let line_num = line_idx + 1;
+                for (pattern, name) in &apollo_patterns {
+                    if let Ok(re) = Regex::new(pattern) {
+                        if re.is_match(line) {
+                            let (start, end) = get_line_offsets(code, line_num);
+                            let line_text = get_line_text(code, line_num).unwrap_or_default();
+
+                            findings.push(LangFinding {
+                                rule_id: self.id().to_string(),
+                                severity: self.severity().to_string(),
+                                line: line_num,
+                                column: 0,
+                                start_byte: start,
+                                end_byte: end,
+                                snippet: line_text.trim().to_string(),
+                                problem: format!(
+                                    "GraphQL without depth limiting: {}. CWE-400: Without depth limits, \
+                                    attackers can craft deeply nested queries to cause denial of service. \
+                                    A single query can exhaust server resources with exponential complexity.",
+                                    name
+                                ),
+                                fix_hint: "Add depth limiting using graphql-depth-limit or \
+                                    @graphql-tools/validation. Example: validationRules: [depthLimit(10)]. \
+                                    Also consider adding cost analysis (graphql-cost-analysis) to limit \
+                                    expensive field access.".to_string(),
+                                auto_fix_available: false,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn fix(&self, _finding: &LangFinding, _code: &str) -> Option<LangFix> { None }
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GRAPHQL-003: GraphQL Batch Query Attack
+// Severity: medium | CWE-770
+// Batch queries can bypass rate limiting and cause resource exhaustion
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JsGraphqlBatchAttack;
+
+impl LangRule for JsGraphqlBatchAttack {
+    fn id(&self) -> &str { "GRAPHQL-003" }
+    fn name(&self) -> &str { "GraphQL Batch Query Attack Risk" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        // Check for GraphQL usage
+        let graphql_imports = ["graphql", "@apollo/server", "apollo-server", "graphql-yoga"];
+        let has_graphql = tree.imports.iter().any(|imp| {
+            graphql_imports.iter().any(|g| imp.module.contains(g))
+        });
+
+        if !has_graphql && !code.contains("graphql") && !code.contains("GraphQL") {
+            return findings;
+        }
+
+        // Check for batch query patterns without proper rate limiting
+        let batch_patterns = [
+            (r#"batch\s*:\s*(?:true|1)"#, "Batch queries enabled"),
+            (r#"batchingEnabled\s*:\s*(?:true|1)"#, "Batching enabled explicitly"),
+            (r#"allowBatchedQueries\s*:\s*(?:true|1)"#, "Batched queries allowed"),
+        ];
+
+        // Check if there's any rate limiting or batch size limit
+        let has_batch_protection = code.contains("maxBatchSize")
+            || code.contains("batchLimit")
+            || code.contains("rateLimit")
+            || code.contains("query complexity")
+            || code.contains("queryComplexity");
+
+        for (line_idx, line) in code.lines().enumerate() {
+            let line_num = line_idx + 1;
+            for (pattern, name) in &batch_patterns {
+                if let Ok(re) = Regex::new(pattern) {
+                    if re.is_match(line) {
+                        let severity = if has_batch_protection { "low" } else { "medium" };
+                        let (start, end) = get_line_offsets(code, line_num);
+                        let line_text = get_line_text(code, line_num).unwrap_or_default();
+
+                        findings.push(LangFinding {
+                            rule_id: self.id().to_string(),
+                            severity: severity.to_string(),
+                            line: line_num,
+                            column: 0,
+                            start_byte: start,
+                            end_byte: end,
+                            snippet: line_text.trim().to_string(),
+                            problem: format!(
+                                "GraphQL batch queries enabled: {}. CWE-770: Batch queries allow clients \
+                                to send multiple operations in one request. Without proper limits, this \
+                                can bypass rate limiting and cause resource exhaustion.",
+                                name
+                            ),
+                            fix_hint: if has_batch_protection {
+                                "Batch queries are enabled but protected. Ensure maxBatchSize is set to a reasonable limit.".to_string()
+                            } else {
+                                "Add batch size limits: maxBatchSize: 10. Implement per-operation \
+                                complexity limits. Consider disabling batching if not needed.".to_string()
+                            },
+                            auto_fix_available: false,
+                        });
+                    }
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn fix(&self, _finding: &LangFinding, _code: &str) -> Option<LangFix> { None }
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JS-SEC-039: Insecure Deserialization
+// Severity: critical | CWE-502
+// Detects unsafe deserialization in JavaScript
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JsInsecureDeser;
+
+impl LangRule for JsInsecureDeser {
+    fn id(&self) -> &str { "JS-SEC-039" }
+    fn name(&self) -> &str { "Insecure Deserialization" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let dangerous_patterns = vec![
+            (r#"unserialize\s*\([^)]*(?:request|input|param|user|body|post|get|cookie)[^)]*\)"#, "unserialize with user input — PHP object injection risk"),
+            (r#"vm\.runInNewContext\s*\([^)]*(?:request|input|param|user|body|post|get)[^)]*\)"#, "vm.runInNewContext with user input — code execution risk"),
+            (r#"new\s+Function\s*\([^)]*(?:request|input|param|user|body|post|get)[^)]*\)"#, "new Function() with user input — code execution risk"),
+            (r#"eval\s*\(\s*(?:JSON\.parse|atob)\s*\([^)]*(?:request|input|param|user|body)"#, "eval with parsed user input — code execution risk"),
+            (r#"node-serialize\.unserialize\s*\("#, "node-serialize.unserialize — known RCE vulnerability"),
+            (r#"serialize\.unserialize\s*\([^)]*(?:request|input|param|user|body)"#, "serialize.unserialize with user input"),
+            (r#"js-yaml\.load\s*\([^)]*(?:request|input|param|user|body|fs\.readFile)"#, "js-yaml.load without safeLoad — YAML deserialization risk"),
+        ];
+
+        for (pattern, desc) in &dangerous_patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!(
+                            "Insecure deserialization: {}. CWE-502: Deserializing untrusted data \
+                            can lead to remote code execution, prototype pollution, or denial of service.",
+                            desc
+                        ),
+                        fix_hint: "Never use unserialize, eval, new Function, or vm.runInNewContext \
+                            with untrusted input. For YAML: use yaml.safeLoad() or yaml.load(input, \
+                            { schema: yaml.JSON_SCHEMA }) with untrusted data. Use JSON.parse() \
+                            instead of eval() for data parsing.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JS-SEC-040: NoSQL Injection (MongoDB)
+// Severity: critical | CWE-943
+// MongoDB queries built with string interpolation or $where with user input
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JsNosqlInjection;
+
+impl LangRule for JsNosqlInjection {
+    fn id(&self) -> &str { "JS-SEC-040" }
+    fn name(&self) -> &str { "NoSQL Injection (MongoDB/Mongoose)" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let nosql_imports = ["mongodb", "mongoose"];
+        let has_nosql = tree.imports.iter().any(|imp| {
+            nosql_imports.iter().any(|n| imp.module.contains(n))
+        });
+
+        if !has_nosql && !code.contains("mongo") && !code.contains("mongoose") {
+            return findings;
+        }
+
+        let dangerous_patterns = vec![
+            (r#"(?:find|findOne|findById|update|delete|insertOne|insertMany|collection)\s*\(\s*["'][^"']*\$\(|\$\{"#, "MongoDB query with template literal containing user input"),
+            (r#"(?:find|findOne|findById)\s*\(\s*["'][^"']*\+[^)]*(?:req|params|body|query|user)"#, "MongoDB query with string concatenation of user input"),
+            (r#"\$\{[^}]*(?:req|params|body|query|user|input)[^}]*\}"#, "Template literal with user input in MongoDB query"),
+            (r#"\$where\s*:\s*["'][^"']*\+[^"']*(?:req|params|body|query)"#, "$where clause with string concatenation — code injection risk"),
+            (r#"\$\{[^}]*(?:eval|Function|require)[^}]*\}"#, "Expression injection in $where via template literal"),
+            (r#"collection\s*\(\s*["'][^"']+\s*\)\s*\.\s*(?:find|findOne|update)\s*\([^)]*\+[^)]*(?:req|params|body|query)"#, "collection().find() with string concat of user input"),
+        ];
+
+        for (pattern, desc) in &dangerous_patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    if findings.iter().any(|f: &LangFinding| f.line == line) {
+                        continue;
+                    }
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!(
+                            "NoSQL injection: {}. CWE-943: MongoDB query built with \
+                            untrusted input allows attackers to manipulate query logic, bypass \
+                            authentication, or extract unauthorized data.",
+                            desc
+                        ),
+                        fix_hint: "Use parameterized queries with Mongoose: \
+                            db.collection('users').find({ username: req.body.username, password: req.body.password }). \
+                            Never interpolate user input directly. For $where, use query operators \
+                            ($eq, $regex) instead.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JS-SEC-041: Server-Side Template Injection (SSTI)
+// Severity: critical | CWE-1336
+// Template engines rendered with user-controlled template paths or content
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JsSsti;
+
+impl LangRule for JsSsti {
+    fn id(&self) -> &str { "JS-SEC-041" }
+    fn name(&self) -> &str { "Server-Side Template Injection (SSTI)" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let template_imports = ["pug", "ejs", "handlebars", "nunjucks", "twig", "marko", "twing", "art-template", "doT", "eta"];
+        let has_template = tree.imports.iter().any(|imp| {
+            template_imports.iter().any(|t| imp.module.contains(t))
+        });
+
+        if !has_template && !code.contains("render") {
+            return findings;
+        }
+
+        let dangerous_patterns = vec![
+            (r#"(?:pug\.render|ejs\.render|template)\s*\(\s*(?:req|params|body|query|user)"#, "Template engine render() with user input as template source"),
+            (r#"(?:res\.render|renderFile|render)\s*\(\s*(?:req|params|body|query|user|cookie)"#, "res.render() with user-controlled template name or content"),
+            (r#"(?:pug|handlebars|nunjucks)\.compile\s*\(\s*(?:req|params|body|query)"#, "Template compile() with user input"),
+            (r#"(?:file|path|template)\s*:\s*(?:req|params|body|query|user)[^,)]"#,
+             "Template file path derived from user input"),
+            (r#"twig\.renderFile\s*\([^)]*(?:req|params|body|query)"#, "Twig renderFile with user input"),
+            (r#"nunjucks\.render\s*\([^)]*(?:req|params|body|query|user)"#, "Nunjucks render with user input"),
+            (r#"Template\s*\(\s*(?:req|params|body|query)[^)]*\)"#, "Handlebars/DoT Template() constructor with user input"),
+        ];
+
+        for (pattern, desc) in &dangerous_patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    if findings.iter().any(|f: &LangFinding| f.line == line) {
+                        continue;
+                    }
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!(
+                            "Server-Side Template Injection (SSTI): {}. CWE-1336: User input \
+                            passed to a template engine can execute arbitrary code on the server.",
+                            desc
+                        ),
+                        fix_hint: "Never use user input as template source. Always use a fixed template \
+                            file path or precompiled template. If dynamic content is needed, pass it \
+                            as template data variables, not as the template itself. \
+                            Example: res.render('user', { username: req.user.name });".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JS-SEC-042: JWT Algorithm Confusion / None Algorithm
+// Severity: high | CWE-347
+// JWT verified with algorithm set to "none" or algorithm mismatch
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JsJwtAlgorithmConfusion;
+
+impl LangRule for JsJwtAlgorithmConfusion {
+    fn id(&self) -> &str { "JS-SEC-042" }
+    fn name(&self) -> &str { "JWT Algorithm Confusion / None Algorithm" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let jwt_imports = ["jsonwebtoken", "jwt-decode", "@auth0/angular-jwt", "jose"];
+        let has_jwt = tree.imports.iter().any(|imp| {
+            jwt_imports.iter().any(|j| imp.module.contains(j))
+        });
+
+        if !has_jwt && !code.contains("jwt") && !code.contains("JsonWebToken") {
+            return findings;
+        }
+
+        let dangerous_patterns = vec![
+            (r#"algorithm\s*:\s*['"]?(?:none|None|NONE)['"]?"#, "JWT signed with 'none' algorithm — token is unsigned"),
+            (r#"algorithms\s*:\s*\[\s*['"]?(?:none|None|NONE)['"]?\s*\]"#, "JWT allowed algorithms includes 'none'"),
+            (r#"verify\s*\([^)]*,\s*(?:null|undefined|NULL|undefined)\s*,", "JWT verified with null/missing secret"),
+            (r#"sign\s*\([^)]*,\s*(?:null|undefined|NULL)\s*(?:,|\))"#, "JWT signed with null secret"),
+            (r#"verify\s*\([^)]*,\s*['\"][^'\"]{0,5}['\"]\s*,", "JWT verified with very short/empty secret"),
+            (r#"getNewSigningKey\s*\(\s*\)"#, "Dynamic signing key without verification — key confusion risk"),
+        ];
+
+        for (pattern, desc) in &dangerous_patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    if findings.iter().any(|f: &LangFinding| f.line == line) {
+                        continue;
+                    }
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!(
+                            "JWT security issue: {}. CWE-347: An attacker can forge tokens by setting \
+                            algorithm to 'none', using a null secret, or exploiting algorithm confusion \
+                            (HS256/ES256 mismatch) to bypass authentication.",
+                            desc
+                        ),
+                        fix_hint: "Always specify a strong, long secret. Use RS256 (asymmetric) instead \
+                            of HS256 when possible. Validate both the algorithm and the secret in production. \
+                            Never accept 'none' as a valid algorithm.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JS-SEC-043: SQL Injection Deep (mysql2, pg, sequelize)
+// Severity: critical | CWE-89
+// Database queries built with string concatenation of user input
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JsSqlInjectionDeep;
+
+impl LangRule for JsSqlInjectionDeep {
+    fn id(&self) -> &str { "JS-SEC-043" }
+    fn name(&self) -> &str { "SQL Injection Deep (mysql2/pg/Sequelize)" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let db_imports = ["mysql2", "pg", "sequelize", "typeorm", "better-sqlite3", "tedious", "oracledb", "prisma"];
+        let has_db = tree.imports.iter().any(|imp| {
+            db_imports.iter().any(|d| imp.module.contains(d))
+        });
+
+        if !has_db {
+            return findings;
+        }
+
+        let dangerous_patterns = vec![
+            // Template literal with user input
+            (r#"(?:query|execute|raw|findOne|findAll)\s*\(\s*`[^`]*\$\{(?:req|params|body|query|user|input)"#, "SQL query with template literal containing user input"),
+            // String concatenation
+            (r#"(?:query|execute|raw|sql)\s*\(\s*["'][^"']*\+[^)]*(?:req|params|body|query|user|input)"#, "SQL query with string concatenation of user input"),
+            (r#"["'][^"']*(?:SELECT|INSERT|UPDATE|DELETE)[^"']*["']\s*\+\s*(?:req|params|body|query|user)"#, "SQL keyword followed by string concatenation with user input"),
+            // Sequelize raw query with interpolation
+            (r#"(?:sequelize|Model)\.query\s*\([^)]*\$\{(?:req|params|body|query)"#, "Sequelize query() with template literal user input"),
+            (r#"\.\s*(?:query|raw)\s*\([^)]*\+[^)]*(?:req|params|body|query|user|input)"#, "Database query method with string concat of user input"),
+            // Prisma unsafe raw
+            (r#"prisma\.[a-zA-Z]+\.findRaw|findRawOrThrow|aggregateRaw"#, "Prisma raw query without parameterization"),
+            (r#"\$\.raw\s*\(`[^`]*\$\{(?:req|params|body|query|user)"#, "Prisma/Knex raw with template literal user input"),
+        ];
+
+        for (pattern, desc) in &dangerous_patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    if findings.iter().any(|f: &LangFinding| f.line == line) {
+                        continue;
+                    }
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!(
+                            "SQL injection (deep): {}. CWE-89: User input concatenated directly \
+                            into SQL query allows attackers to manipulate query logic, extract, \
+                            modify, or delete data.",
+                            desc
+                        ),
+                        fix_hint: "Use parameterized queries for all database drivers: \
+                            db.query('SELECT * FROM users WHERE id = ?', [userId]). \
+                            In Sequelize: use { where: { id: userId } } instead of raw queries. \
+                            In Prisma: use Prisma's type-safe query builder.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JS-SEC-044: Prototype Pollution via JSON.parse / Object Merge
+// Severity: high | CWE-1321
+// User input merged into objects without validation enables prototype pollution
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JsPrototypePollutionDeep;
+
+impl LangRule for JsPrototypePollutionDeep {
+    fn id(&self) -> &str { "JS-SEC-044" }
+    fn name(&self) -> &str { "Prototype Pollution (Deep Merge)" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let dangerous_patterns = vec![
+            // Object.assign with user input
+            (r#"Object\.assign\s*\([^)]*,\s*(?:req|params|body|query|user|input)"#, "Object.assign() with user input — prototype pollution risk"),
+            // Spread operator with user input
+            (r#"\{[^}]*\.\.\.(?:req|params|body|query|user)[^}]*\}"#, "Object spread with user input — prototype pollution risk"),
+            // Deep merge / merge with user input
+            (r#"(?:merge|deepMerge|deep|extend)\s*\([^)]*,\s*(?:req|params|body|query|user|input)"#, "Deep merge with user input — prototype pollution risk"),
+            // Lodash merge / set with user input
+            (r#"(?:_\.)?(?:merge|mergeWith|set|unset)\s*\([^)]*,\s*(?:req|params|body|query|user|input)"#, "Lodash _.merge/set with user input — prototype pollution risk"),
+            // JSON.parse with __proto__ check bypass
+            (r#"JSON\.parse\s*\([^)]*(?:req|params|body|query|user)"#, "JSON.parse of user input then merged into objects — prototype pollution risk"),
+            // Recursive merge function
+            (r#"function\s+\w*[Mm]erge\w*\s*\([^)]*\)\s*\{[^}]*Object\.assign|Object\.keys\([^)]*\)\.forEach"#, "Custom merge function without prototype key sanitization"),
+            // __proto__ or constructor in user input path
+            (r#"(?:req|params|body|query|user)\s*\.\s*(?:__proto__|constructor|prototype)"#, "Accessing __proto__/constructor from user input — prototype pollution vector"),
+        ];
+
+        for (pattern, desc) in &dangerous_patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    if findings.iter().any(|f: &LangFinding| f.line == line) {
+                        continue;
+                    }
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!(
+                            "Prototype pollution: {}. CWE-1321: Merging untrusted user input into \
+                            objects allows attackers to inject __proto__ or constructor properties, \
+                            modifying object behavior, causing DoS, or bypassing security checks.",
+                            desc
+                        ),
+                        fix_hint: "Sanitize prototype keys: block __proto__, constructor, and prototype. \
+                            Use Object.freeze() on critical objects. Use safe-eval or ajv for schema validation. \
+                            Use const safeMerge = (target, source) => Object.fromEntries(\n                                Object.entries(source)\n                                    .filter(([k]) => !['__proto__','constructor','prototype'].includes(k))\n                                    .map(([k,v]) => [k, typeof v === 'object' ? safeMerge({}, v) : v])\n                            );".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JS-SEC-045: SSRF Deep (Internal IP / Cloud Metadata Exfiltration)
+// Severity: critical | CWE-918
+// HTTP requests to internal IPs, cloud metadata endpoints, or localhost
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct JsSsrfDeep;
+
+impl LangRule for JsSsrfDeep {
+    fn id(&self) -> &str { "JS-SEC-045" }
+    fn name(&self) -> &str { "SSRF Deep (Internal IP / Cloud Metadata)" }
+    fn severity(&self) -> &'static str { "critical" }
+
+    fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let http_imports = ["axios", "node-fetch", "got", "undici", "request", "http", "https", "needle", "bent"];
+        let has_http = tree.imports.iter().any(|imp| {
+            http_imports.iter().any(|h| imp.module.contains(h))
+        });
+
+        if !has_http && !code.contains("fetch") {
+            return findings;
+        }
+
+        let dangerous_patterns = vec![
+            // Direct user input as URL
+            (r#"(?:axios|fetch|got|request|needle|bent)\s*\(\s*(?:req|params|body|query|user|input|url)"#, "HTTP request with user input as URL — SSRF risk"),
+            (r#"(?:axios|fetch|got|request)\.get\s*\([^)]*(?:req|params|body|query|user|input)"#, "HTTP GET with user-controlled URL"),
+            (r#"(?:axios|fetch|got|request)\.post\s*\([^)]*url\s*:\s*(?:req|params|body|query)"#, "HTTP POST with user-controlled URL in body"),
+            // Common SSRF targets
+            (r#"["']https?://(?:169\.254|metadata\.google|metadata\.azure|100\.[0-9]+)"#, "SSRF target: cloud metadata endpoint or internal IP"),
+            (r#"["']https?://localhost["']|["']https?://127\.0\.0\.1["']"#, "SSRF target: localhost/127.0.0.1"),
+            (r#"["']https?://0\.0\.0\.0["']"#, "SSRF target: 0.0.0.0 — binds to all interfaces"),
+            (r#"["']https?://(?:10\.|172\.(?:1[6-9]|2[0-9]|3[0-1])\.|192\.168\.)"#, "SSRF target: private IP range"),
+            // File protocol
+            (r#"["']file://"#, "SSRF risk: file:// protocol allows local file access"),
+            // DNS rebinding
+            (r#"new\s+URL\s*\([^)]*(?:req|params|body|query|user)"#, "URL constructed from user input without validation — DNS rebinding risk"),
+        ];
+
+        for (pattern, desc) in &dangerous_patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    if findings.iter().any(|f: &LangFinding| f.line == line) {
+                        continue;
+                    }
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!(
+                            "SSRF (deep): {}. CWE-918: User input used as URL allows attackers to \
+                            scan internal networks, access cloud metadata (169.254.169.254), \
+                            read local files, or pivot to internal services.",
+                            desc
+                        ),
+                        fix_hint: "Validate and whitelist URLs before fetching. Block private IP ranges, \
+                            localhost, cloud metadata endpoints (169.254.x.x), and file:// protocol. \
+                            Use URL parser to extract hostname and validate it: \
+                            const hostname = new URL(url).hostname; \
+                            if (isPrivateIP(hostname) || isLoopback(hostname)) throw new Error('Invalid URL');".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Registry function
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1676,7 +2814,7 @@ pub fn js_security_rules() -> Vec<Box<dyn LangRule>> {
         Box::new(JsInsecureCookie),
         Box::new(JsRegexDos),
         Box::new(JsInsecureCors),
-        // Extended rules JS-SEC-016 to JS-SEC-025
+        // Extended rules JS-SEC-016 to JS-SEC-038
         Box::new(JsCodeInjection),
         Box::new(JsSqlConcatInjection),
         Box::new(JsInsecureWebSocket),
@@ -1687,5 +2825,23 @@ pub fn js_security_rules() -> Vec<Box<dyn LangRule>> {
         Box::new(JsInsecureStorage),
         Box::new(JsMissingCSP),
         Box::new(JsProtoPollution),
+        // New deep check rules
+        Box::new(JsSsrfInternalIp),
+        Box::new(JsInsecureJwtV2),
+        // JS-CRYPT-001: Insecure TLS/Crypto
+        Box::new(JsInsecureTlsCrypto),
+        // JS-SEC-039: Insecure Deserialization
+        Box::new(JsInsecureDeser),
+        // GraphQL Security Rules
+        Box::new(JsGraphqlIntrospection),
+        Box::new(JsGraphqlMissingDepthLimit),
+        Box::new(JsGraphqlBatchAttack),
+        // JS-SEC-040 to JS-SEC-045: Vulnerable Sink Detection (Reverse-Engineered from hackingtool)
+        Box::new(JsNosqlInjection),
+        Box::new(JsSsti),
+        Box::new(JsJwtAlgorithmConfusion),
+        Box::new(JsSqlInjectionDeep),
+        Box::new(JsPrototypePollutionDeep),
+        Box::new(JsSsrfDeep),
     ]
 }

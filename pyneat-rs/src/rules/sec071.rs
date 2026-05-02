@@ -16,11 +16,19 @@
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::rules::base::{extract_snippet, Fix, Finding, Rule, Severity};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use tree_sitter::Tree;
 
 /// SEC-071: Weak JWT Payload Rule
 ///
 /// CWE-315: Cleartext Storage of Sensitive Data
+static PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r#"(?i)jwt\.encode\s*\(\s*\{[^}]*(?:password|passwd|secret|ssn|credit|card)"#, "JWT payload contains sensitive data"),
+    (r#"(?i)\{[^{}]*['"]?(?:password|secret|credit_card|ssn|token|api_key)['"]?\s*:"#, "JWT payload structure contains sensitive field"),
+    (r#"(?i)(?:localStorage|sessionStorage)\.(?:setItem|getItem)\([^)]*(?:token|jwt)"#, "JWT stored in web storage"),
+]);
+
 pub struct WeakJwtPayloadRule;
 
 impl Rule for WeakJwtPayloadRule {
@@ -31,14 +39,8 @@ impl Rule for WeakJwtPayloadRule {
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
 
-        let patterns = [
-            (r#"(?i)jwt\.encode\s*\(\s*\{[^}]*(?:password|passwd|secret|ssn|credit|card)"#, "JWT payload contains sensitive data"),
-            (r#"(?i)\{[^{}]*['\"]?(?:password|secret|credit_card|ssn|token|api_key)['\"]?\s*:"#, "JWT payload structure contains sensitive field"),
-            (r#"(?i)(?:localStorage|sessionStorage)\.(?:setItem|getItem)\([^)]*(?:token|jwt)"#, "JWT stored in web storage"),
-        ];
-
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {

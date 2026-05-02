@@ -66,6 +66,20 @@ class SecurityScannerRule(Rule):
         self._file_path: str = ""
         self._seen_findings: set = set()
 
+        # Phase 4: Wire up rule-specific params from config
+        p = self.config.params if self.config else {}
+        self._min_entropy = float(p.get("min_entropy", 4.0))
+        self._skip_patterns: List[str] = []
+        if isinstance(p.get("skip_patterns"), list):
+            self._skip_patterns = [str(x) for x in p["skip_patterns"]]
+        self._include_patterns: List[str] = []
+        if isinstance(p.get("include_patterns"), list):
+            self._include_patterns = [str(x) for x in p["include_patterns"]]
+        self._min_hash_bits: int = int(p.get("min_hash_bits", 256))
+        self._hardcoded_secrets_enabled = p.get("hardcoded_secrets_enabled", True)
+        self._sql_injection_enabled = p.get("sql_injection_enabled", True)
+        self._command_injection_enabled = p.get("command_injection_enabled", True)
+
     @property
     def description(self) -> str:
         return "Detects and auto-fixes 50+ security vulnerabilities across 5 severity levels (CWE + OWASP aligned)"
@@ -135,7 +149,13 @@ class SecurityScannerRule(Rule):
             # Phase 10: Missing security headers
             self._scan_missing_security_headers(content, lines)
 
-            # Phase 11: Add hardcoded secrets and weak crypto from transformer
+            # Phase 11: GraphQL security patterns
+            self._scan_graphql_security(content, lines)
+
+            # Phase 12: Insecure crypto patterns (PY-CRYPT-001)
+            self._scan_insecure_crypto(content, lines)
+
+            # Phase 13: Add hardcoded secrets and weak crypto from transformer
             # (These are detected via CST, not regex - needs specific line info)
             for finding in transformer.secret_findings:
                 self._add_finding(
@@ -464,6 +484,139 @@ class SecurityScannerRule(Rule):
                         f"{framework} app without security headers (X-Frame-Options, CSP, etc.)"
                     )
                     break
+
+    def _scan_graphql_security(self, content: str, lines: List[str]) -> None:
+        """Detect GraphQL security issues: introspection, depth limit, batch attacks."""
+        # Check if code uses GraphQL
+        graphql_patterns = [
+            r'graphql',
+            r'GraphQL',
+            r'schema',
+            r'@strawberry\.type',
+            r'Schema\(',
+            r'make_executable_schema',
+            r'graphene\.Schema',
+        ]
+        has_graphql = any(re.search(p, content) for p in graphql_patterns)
+        if not has_graphql:
+            return
+
+        # GRAPHQL-001: Introspection enabled patterns
+        introspection_patterns = [
+            (r'introspection\s*[:=]\s*True', "GraphQL introspection enabled"),
+            (r'introspection\s*[:=]\s*1', "GraphQL introspection enabled"),
+            (r'playground\s*[:=]\s*True', "GraphQL Playground enabled (deprecated)"),
+            (r'include_stacktrace_in_error_responses\s*[:=]\s*True', "Stack trace in error responses"),
+            (r'enable_introspection\s*=\s*True', "Introspection explicitly enabled"),
+        ]
+        for pattern, problem in introspection_patterns:
+            for match in re.finditer(pattern, content):
+                line_no = content[:match.start()].count('\n') + 1
+                snippet = self._get_snippet(lines, line_no, match.group())
+                self._add_finding(
+                    "GRAPHQL-001", line_no, line_no, snippet,
+                    f"GraphQL security issue: {problem}"
+                )
+
+        # GRAPHQL-002: Missing depth limit
+        has_depth_limit = bool(re.search(
+            r'(depth_limit|max_depth|cost_limit|query_complexity|validation_rules)',
+            content
+        ))
+        if not has_depth_limit:
+            depth_limit_patterns = [
+                r'Schema\s*\(',
+                r'make_executable_schema',
+                r'@strawberry\.schema',
+                r'graphql\(\s*schema',
+            ]
+            for pattern in depth_limit_patterns:
+                for match in re.finditer(pattern, content):
+                    line_no = content[:match.start()].count('\n') + 1
+                    snippet = self._get_snippet(lines, line_no, match.group())
+                    self._add_finding(
+                        "GRAPHQL-002", line_no, line_no, snippet,
+                        "GraphQL schema without depth limiting - DoS vulnerability"
+                    )
+                    break  # Only flag once per file
+
+        # GRAPHQL-003: Batch query attacks
+        batch_patterns = [
+            (r'batch_queries\s*[:=]\s*True', "Batch queries enabled"),
+            (r'enable_batching\s*[:=]\s*True', "Batching enabled"),
+            (r'max_batch_size\s*[:=]\s*[^1-9]', "Batch size limit set"),
+        ]
+        for pattern, problem in batch_patterns:
+            for match in re.finditer(pattern, content):
+                line_no = content[:match.start()].count('\n') + 1
+                snippet = self._get_snippet(lines, line_no, match.group())
+                self._add_finding(
+                    "GRAPHQL-003", line_no, line_no, snippet,
+                    f"GraphQL batch query: {problem}"
+                )
+
+    def _scan_insecure_crypto(self, content: str, lines: List[str]) -> None:
+        """Detect insecure cryptographic practices in Python (PY-CRYPT-001).
+        
+        Detects:
+        - SSL verification bypass (requests with verify=False/0)
+        - urllib with unverified SSL context
+        - ECB mode encryption (insecure)
+        - MD5/SHA1 for security purposes
+        """
+        # PY-CRYPT-001: SSL verification bypass
+        ssl_bypass_patterns = [
+            (r'requests\.(?:get|post|put|patch|delete|head|options)\s*\([^)]*verify\s*=\s*(?:False|0)[^)]*\)',
+             "requests with verify=False - SSL verification disabled"),
+            (r'requests\.(?:get|post|put|patch|delete|head|options)\s*\([^)]*verify\s*=\s*(?:False|0)[^)]*\)',
+             "requests with verify=0 - SSL verification disabled"),
+            (r'urllib3\.disable_warnings\s*\(\s*\)', 
+             "urllib3 warnings disabled - may hide SSL issues"),
+            (r'ssl\._create_unverified_context\s*\(',
+             "ssl._create_unverified_context() - SSL verification bypassed"),
+        ]
+        for pattern, msg in ssl_bypass_patterns:
+            for match in re.finditer(pattern, content):
+                line_no = content[:match.start()].count('\n') + 1
+                snippet = self._get_snippet(lines, line_no, match.group()[:150])
+                self._add_finding("PY-CRYPT-001", line_no, line_no, snippet, msg)
+        
+        # ECB mode encryption (insecure)
+        ecb_patterns = [
+            (r'MODE_ECB', "ECB mode encryption detected - insecure (patterns visible in ciphertext)"),
+            (r'\.MODE_ECB\b', "ECB mode detected - use AES.MODE_GCM or AES.MODE_CBC with HMAC"),
+            (r'Crypto\.Cipher\.AES\.MODE_ECB', "PyCryptodome AES ECB mode - insecure"),
+            (r'Cryptodome\.Cipher\.AES\.MODE_ECB', "PyCryptodome AES ECB mode - insecure"),
+        ]
+        for pattern, msg in ecb_patterns:
+            for match in re.finditer(pattern, content):
+                line_no = content[:match.start()].count('\n') + 1
+                snippet = self._get_snippet(lines, line_no, match.group()[:80])
+                self._add_finding("PY-CRYPT-001", line_no, line_no, snippet, msg)
+        
+        # PKCS7 padding without proper validation
+        pkcs7_patterns = [
+            (r'padding\.PKCS7', "PKCS7 padding used - ensure proper validation and authentication"),
+            (r'pad\s*\([^)]*\.PKCS7', "PKCS7 padding in encryption - use authenticated encryption"),
+        ]
+        for pattern, msg in pkcs7_patterns:
+            for match in re.finditer(pattern, content):
+                line_no = content[:match.start()].count('\n') + 1
+                snippet = self._get_snippet(lines, line_no, match.group()[:80])
+                self._add_finding("PY-CRYPT-001", line_no, line_no, snippet, msg)
+        
+        # Weak hashing for security purposes
+        weak_hash_patterns = [
+            (r'hashlib\.md5\s*\(', "MD5 hash - weak for cryptographic/security purposes"),
+            (r'hashlib\.sha1\s*\(', "SHA1 hash - deprecated for signatures and security"),
+            (r'hashlib\.new\s*\([\'"]md5[\'"]', "MD5 via hashlib.new() - weak for security"),
+            (r'hashlib\.new\s*\([\'"]sha1[\'"]', "SHA1 via hashlib.new() - deprecated for security"),
+        ]
+        for pattern, msg in weak_hash_patterns:
+            for match in re.finditer(pattern, content):
+                line_no = content[:match.start()].count('\n') + 1
+                snippet = self._get_snippet(lines, line_no, match.group()[:80])
+                self._add_finding("PY-CRYPT-001", line_no, line_no, snippet, msg)
 
     def _add_finding(
         self,

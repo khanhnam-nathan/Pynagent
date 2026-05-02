@@ -16,11 +16,20 @@
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::rules::base::{extract_snippet, Fix, Finding, Rule, Severity};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use tree_sitter::Tree;
 
 /// SEC-068: Frontend Price Manipulation Rule
 ///
 /// CWE-641: Improper Restriction of Names or Values
+static PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r#"(?i)(?:price|total|amount|subtotal)\s*=\s*(?:parseFloat|parseInt|\$)\s*\([^)]*\)[^;]*\.(?:post|send|fetch|ajax|axios)"#, "Client-side price sent to server"),
+    (r#"(?i)(?:post|send|fetch)\s*\([^)]*(?:price|total|amount)\s*[^)]*\)"#, "Price data sent via AJAX"),
+    (r#"(?i)<input[^>]*\btype\s*=\s*["']?hidden["']?[^>]*\b(?:price|total|amount)"#, "Hidden price field that could be manipulated"),
+    (r#"(?i)request\.form\.get\(['"](?:price|total|amount|subtotal)"#, "Server receiving pre-calculated price from client"),
+]);
+
 pub struct FrontendPriceManipulationRule;
 
 impl Rule for FrontendPriceManipulationRule {
@@ -31,15 +40,8 @@ impl Rule for FrontendPriceManipulationRule {
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
 
-        let patterns = [
-            (r#"(?i)(?:price|total|amount|subtotal)\s*=\s*(?:parseFloat|parseInt|\$)\s*\([^)]*\)[^;]*\.(?:post|send|fetch|ajax|axios)"#, "Client-side price sent to server"),
-            (r#"(?i)(?:post|send|fetch)\s*\([^)]*(?:price|total|amount)\s*[^)]*\)"#, "Price data sent via AJAX"),
-            (r#"(?i)<input[^>]*\btype\s*=\s*["']?hidden["']?[^>]*\b(?:price|total|amount)"#, "Hidden price field that could be manipulated"),
-            (r#"(?i)request\.form\.get\(['"](?:price|total|amount|subtotal)"#, "Server receiving pre-calculated price from client"),
-        ];
-
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {

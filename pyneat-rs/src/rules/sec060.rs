@@ -16,11 +16,20 @@
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::rules::base::{extract_snippet, Fix, Finding, Rule, Severity};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use tree_sitter::Tree;
 
 /// SEC-060: Autocomplete Enabled Rule
 ///
 /// CWE-200: Exposure of Sensitive Information to an Unauthorized Actor
+static PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r#"<input[^>]*\btype\s*=\s*["']?(?:password|creditcard|card|cc|ssn|security)?["']?[^>]*\bautocomplete\s*=\s*["']?on["']?"#, "Password field with autocomplete enabled"),
+    (r#"<input[^>]*\bautocomplete\s*=\s*["']?on["']?[^>]*\btype\s*=\s*["']?(?:password|creditcard|card|cc|ssn|security)?["']?"#, "Sensitive field with autocomplete enabled"),
+    (r#"(?:PasswordInput|CreditCardField|SSNField)\s*\([^)]*autocomplete\s*=\s*['"]?on['"]?"#, "Django/Flask sensitive field with autocomplete"),
+    (r#"<(?:Input|Password|CreditCard)[^>]*\bautoComplete\s*=\s*["']?(?:on|true)["']?"#, "React/Vue component with autocomplete enabled"),
+]);
+
 pub struct AutocompleteEnabledRule;
 
 impl Rule for AutocompleteEnabledRule {
@@ -30,15 +39,9 @@ impl Rule for AutocompleteEnabledRule {
 
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r#"<input[^>]*\btype\s*=\s*["']?(?:password|creditcard|card|cc|ssn|security)?["']?[^>]*\bautocomplete\s*=\s*["']?on["']?"#, "Password field with autocomplete enabled"),
-            (r#"<input[^>]*\bautocomplete\s*=\s*["']?on["']?[^>]*\btype\s*=\s*["']?(?:password|creditcard|card|cc|ssn|security)?["']?"#, "Sensitive field with autocomplete enabled"),
-            (r#"(?:PasswordInput|CreditCardField|SSNField)\s*\([^)]*autocomplete\s*=\s*['"]?on['"]?"#, "Django/Flask sensitive field with autocomplete"),
-            (r#"<(?:Input|Password|CreditCard)[^>]*\bautoComplete\s*=\s*["']?(?:on|true)["']?"#, "React/Vue component with autocomplete enabled"),
-        ];
 
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {

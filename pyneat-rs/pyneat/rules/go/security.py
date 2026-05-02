@@ -215,6 +215,18 @@ _INFO_PATTERNS = [
      'Fatal log contains sensitive data'),
 ]
 
+# GraphQL Security (MEDIUM/HIGH)
+_GRAPHQL_PATTERNS = [
+    (r'graphql\.NewSchema\s*\(',
+     'graphql.NewSchema without introspection disabled'),
+    (r'introspection\s*[:=]\s*true',
+     'GraphQL introspection explicitly enabled'),
+    (r'Playground\s*[:=]\s*true',
+     'GraphQL Playground enabled - exposes schema'),
+    (r'depth.*limit|maxDepth|max_depth',
+     'Verify depth limit is properly configured for GraphQL'),
+]
+
 
 # --------------------------------------------------------------------------
 # Rule Class
@@ -268,6 +280,7 @@ class GoSecurityRule(Rule):
         self._scan_ssrf(content, lines)
         self._scan_insecure_cookie(content, lines)
         self._scan_info_disclosure(content, lines)
+        self._scan_graphql_security(content, lines)
 
         changes = [
             f"[{f.rule_id}] {f.problem} (line {f.start_line})"
@@ -467,6 +480,36 @@ class GoSecurityRule(Rule):
                         ("Search codebase: grep -r 'log.*password\\|log.*secret'",
                          "Review all log.Print* calls before production"),
                         ("https://cwe.mitre.org/data/definitions/532.html"),
+                    ))
+
+    def _scan_graphql_security(self, content: str, lines: List[str]) -> None:
+        """Detect GraphQL security issues in Go code."""
+        # Check if code uses GraphQL libraries
+        graphql_libs = ['graphql', '99designs/gqlgen', 'graph-gophers/graphql-go', 'gqlgen']
+        has_graphql = any(lib in content for lib in graphql_libs)
+        if not has_graphql:
+            return
+
+        for pat, problem in _GRAPHQL_PATTERNS:
+            for m in re.finditer(pat, content):
+                line_no = _line_no(content, m.start())
+                if self._is_real_code(lines, line_no):
+                    self._findings.append(_f(
+                        "GO-GRAPHQL-001", line_no,
+                        _snippet(lines, line_no, m.group()),
+                        problem, SecuritySeverity.MEDIUM,
+                        "CWE-200", "Exposure of Sensitive Information",
+                        "A01", "Broken Access Control",
+                        5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
+                        ("Disable introspection in production",
+                         "Use introspection field: false in schema config",
+                         "Implement authentication for introspection queries"),
+                        ("Do NOT expose full schema in production",
+                         "Do NOT use playground in production"),
+                        ("Test introspection with: introspectionQuery",
+                         "Verify schema is not exposed to unauthorized users"),
+                        ("https://gqlgen.com/reference/introspection/",
+                         "https://www.apollographql.com/docs/apollo-server/api/apollo-server/"),
                     ))
 
     def _is_real_code(self, lines: List[str], line_no: int) -> bool:

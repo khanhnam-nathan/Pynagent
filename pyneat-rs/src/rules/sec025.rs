@@ -16,7 +16,15 @@
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::rules::base::{extract_snippet, Fix, Finding, Rule, Severity};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use tree_sitter::Tree;
+
+static PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r#"os\.path\.exists\s*\(.*\)\s*:\s*\n\s*.*open\s*\("#, "Check file exists before open"),
+    (r#"if\s+.*:\s*\n\s*.*os\.chmod\s*\("#, "Check permission before chmod"),
+    (r#"if\s+.*:\s*\n\s*.*os\.rename\s*\("#, "Check before rename"),
+]);
 
 pub struct Sec025;
 
@@ -27,14 +35,9 @@ impl Rule for Sec025 {
 
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r#"os\.path\.exists\s*\(.*\)\s*:\s*\n\s*.*open\s*\("#, "Check file exists before open"),
-            (r#"if\s+.*:\s*\n\s*.*os\.chmod\s*\("#, "Check permission before chmod"),
-            (r#"if\s+.*:\s*\n\s*.*os\.rename\s*\("#, "Check before rename"),
-        ];
 
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {

@@ -14,7 +14,6 @@ mod rules;
 pub use rules::{AiSecurityRule, AiFinding, AiSecurityConfig, AiVulnerabilityType};
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 // --------------------------------------------------------------------------
 // AI Security Scanner

@@ -4,7 +4,6 @@
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 // --------------------------------------------------------------------------
 // Shared Types (moved from mod.rs)
@@ -332,6 +331,7 @@ impl AiSecurityRule for MissingConfidenceThresholdRule {
 }
 
 pub struct MissingFactCheckRule {
+    #[allow(dead_code)]
     patterns: Vec<Regex>,
 }
 

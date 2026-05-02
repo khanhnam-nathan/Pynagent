@@ -684,6 +684,839 @@ impl LangRule for RustMutableRefSharing {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// RUST-AI-001: AI generates unwrap() panic in production code
+// Severity: medium | AI Bug Pattern
+// unwrap() and expect() in non-test code without proper error handling
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct RustAiUnwrapPanic;
+
+impl LangRule for RustAiUnwrapPanic {
+    fn id(&self) -> &str { "RUST-AI-001" }
+    fn name(&self) -> &str { "AI: unwrap() / expect() Causing Panic in Production" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let panic_methods = ["unwrap", "expect", "unwrap_err", "expect_err", "unwrap_unchecked"];
+
+        // Skip test files
+        if code.contains("#[test]") || code.contains("#[cfg(test)]") {
+            return findings;
+        }
+
+        for (i, line) in code.lines().enumerate() {
+            if line.trim().starts_with("//") || line.trim().starts_with("/*") {
+                continue;
+            }
+            for method in &panic_methods {
+                let re = Regex::new(&format!(r"\b{}\s*\(", method)).unwrap();
+                if re.is_match(line) {
+                    let (start, end) = get_line_offsets(code, i + 1);
+                    findings.push(LangFinding {
+                        rule_id: "RUST-AI-001".to_string(),
+                        severity: "medium".to_string(),
+                        line: i + 1,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line.to_string(),
+                        problem: format!("AI pattern detected: {}(), which panics on None/Err. AI often generates unwrap() in production code, causing unexpected crashes.", method),
+                        fix_hint: "Replace with proper error handling: unwrap_or(), unwrap_or_else(), or ? operator. Return Result/Option and let the caller handle errors. For truly impossible cases, use unreachable!() or debug_assert!().".to_string(),
+                        auto_fix_available: false,
+                    });
+                    break;
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RUST-AI-002: AI generates unsafe blocks without safety docs
+// Severity: high | AI Bug Pattern
+// unsafe without # Safety: comment (Rust's own convention)
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct RustAiUnsafeNoDocs;
+
+impl LangRule for RustAiUnsafeNoDocs {
+    fn id(&self) -> &str { "RUST-AI-002" }
+    fn name(&self) -> &str { "AI: unsafe Block Without Safety Documentation" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let unsafe_re = Regex::new(r"\bunsafe\s*\{").unwrap();
+        let safety_re = Regex::new(r"(?i)#\s*Safety\s*:").unwrap();
+
+        for (i, line) in code.lines().enumerate() {
+            if unsafe_re.is_match(line) {
+                // Check next 5 lines for safety documentation
+                let next_lines: String = code.lines().skip(i + 1).take(5).collect::<Vec<_>>().join("\n");
+                if !safety_re.is_match(&next_lines) {
+                    let (start, end) = get_line_offsets(code, i + 1);
+                    findings.push(LangFinding {
+                        rule_id: "RUST-AI-002".to_string(),
+                        severity: "high".to_string(),
+                        line: i + 1,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line.to_string(),
+                        problem: "AI-generated unsafe block without safety documentation. AI often skips the # Safety: comment that Rust conventions require.".to_string(),
+                        fix_hint: "Add a # Safety: comment before or inside the unsafe block explaining: 1) Invariants the caller must uphold, 2) Why this unsafe block is necessary, 3) What undefined behavior could occur if violated.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RUST-AI-003: AI generates Rc<RefCell<T>> instead of Arc<Mutex<T>>
+// Severity: high | AI Bug Pattern
+// Thread-unsafe interior mutability in async/multi-threaded code
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct RustAiWrongSyncPrimitive;
+
+impl LangRule for RustAiWrongSyncPrimitive {
+    fn id(&self) -> &str { "RUST-AI-003" }
+    fn name(&self) -> &str { "AI: Incorrect Sync Primitive (Rc<RefCell> in Threaded Context)" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        // Rc<RefCell<T>> is NOT thread-safe
+        let rc_refcell_re = Regex::new(r"Rc\s*<\s*RefCell\s*<").unwrap();
+        // Cell<T> is also not thread-safe
+        let cell_re = Regex::new(r"\bCell\s*<").unwrap();
+        // UnsafeCell is inherently unsafe
+        let unsafe_cell_re = Regex::new(r"\bUnsafeCell\s*<").unwrap();
+
+        // Check if code is async (more likely to be used in threaded context)
+        let is_async = code.contains("async fn") || code.contains(".await")
+            || code.contains("tokio::spawn") || code.contains("std::thread");
+
+        for (i, line) in code.lines().enumerate() {
+            if line.trim().starts_with("//") || line.trim().starts_with("/*") {
+                continue;
+            }
+
+            if rc_refcell_re.is_match(line) {
+                let (start, end) = get_line_offsets(code, i + 1);
+                let (arc_line, arc_hint) = if is_async {
+                    ("async/multi-threaded".to_string(),
+                     "Use Arc<Mutex<T>> or Arc<RwLock<T>> for thread-safe shared state in async code.".to_string())
+                } else {
+                    ("potentially multi-threaded".to_string(),
+                     "Consider Arc<Mutex<T>> or Arc<RwLock<T>> if this code will be shared across threads.".to_string())
+                };
+
+                findings.push(LangFinding {
+                    rule_id: "RUST-AI-003".to_string(),
+                    severity: "high".to_string(),
+                    line: i + 1,
+                    column: 0,
+                    start_byte: start,
+                    end_byte: end,
+                    snippet: line.to_string(),
+                    problem: format!("AI pattern: Rc<RefCell<T>> in {} code. Rc is not Send/Sync, so it can't be shared across threads. RefCell provides runtime borrow checking which is not thread-safe.", arc_line),
+                    fix_hint: arc_hint,
+                    auto_fix_available: false,
+                });
+            }
+
+            if cell_re.is_match(line) && is_async {
+                let (start, end) = get_line_offsets(code, i + 1);
+                findings.push(LangFinding {
+                    rule_id: "RUST-AI-003".to_string(),
+                    severity: "high".to_string(),
+                    line: i + 1,
+                    column: 0,
+                    start_byte: start,
+                    end_byte: end,
+                    snippet: line.to_string(),
+                    problem: "Cell<T> used in async/threaded context. Cell is not thread-safe. Use AtomicPtr, Mutex, or RwLock instead.".to_string(),
+                    fix_hint: "Use std::sync::Mutex<T> or std::sync::RwLock<T> for shared state across threads.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+
+            if unsafe_cell_re.is_match(line) {
+                let (start, end) = get_line_offsets(code, i + 1);
+                findings.push(LangFinding {
+                    rule_id: "RUST-AI-003".to_string(),
+                    severity: "high".to_string(),
+                    line: i + 1,
+                    column: 0,
+                    start_byte: start,
+                    end_byte: end,
+                    snippet: line.to_string(),
+                    problem: "UnsafeCell<T> used directly. UnsafeCell is the building block for interior mutability but requires careful unsafe handling.".to_string(),
+                    fix_hint: "Prefer safe wrappers like Mutex, RwLock, or OnceCell. Only use UnsafeCell when absolutely necessary and always document safety invariants.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RUST-QUAL-009: Unused mut Keyword
+// Severity: info
+// Detects: let mut x = value where x is never reassigned
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct RustUnusedMut;
+
+impl LangRule for RustUnusedMut {
+    fn id(&self) -> &str { "RUST-QUAL-009" }
+    fn name(&self) -> &str { "Unused mut Keyword" }
+    fn severity(&self) -> &'static str { "info" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let mut_re = Regex::new(r"\blet\s+mut\s+(\w+)\s*=").unwrap();
+        let mut mut_vars: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        for caps in mut_re.captures_iter(code) {
+            if let Some(var) = caps.get(1) {
+                let var_str = var.as_str().to_string();
+                let line = code[..caps.get(0).unwrap().start()].matches('\n').count() + 1;
+                mut_vars.insert(var_str, line);
+            }
+        }
+
+        if mut_vars.is_empty() {
+            return findings;
+        }
+
+        let assignment_re = Regex::new(r"(?m)^\s*(\w+)\s*=").unwrap();
+        let assigned: std::collections::HashSet<String> = assignment_re
+            .captures_iter(code)
+            .filter_map(|c| c.get(1).map(|x| x.as_str().to_string()))
+            .collect();
+
+        for (var, line) in &mut_vars {
+            if !assigned.contains(var) {
+                let (start, end) = get_line_offsets(code, *line);
+                let line_text = get_line_text(code, *line).unwrap_or_default();
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: self.severity().to_string(),
+                    line: *line,
+                    column: 0,
+                    start_byte: start,
+                    end_byte: end,
+                    snippet: line_text.trim().to_string(),
+                    problem: format!("Variable '{}' is declared with 'mut' but never reassigned. The 'mut' keyword is unnecessary.", var),
+                    fix_hint: "Remove 'mut' if the variable is not reassigned: change 'let mut x' to 'let x'.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RUST-QUAL-010: Cloning in Tight Loop
+// Severity: medium
+// Detects: .clone() calls inside for/while loops
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct RustCloneInLoop;
+
+impl LangRule for RustCloneInLoop {
+    fn id(&self) -> &str { "RUST-QUAL-010" }
+    fn name(&self) -> &str { "Clone in Tight Loop" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let clone_re = Regex::new(r"\.clone\(\)").unwrap();
+        let loop_re = Regex::new(r"(?m)^\s*(for|while)\s*\(").unwrap();
+
+        let loop_lines: std::collections::HashSet<usize> = loop_re
+            .find_iter(code)
+            .map(|m| code[..m.start()].matches('\n').count() + 1)
+            .collect();
+
+        for m in clone_re.find_iter(code) {
+            let line = code[..m.start()].matches('\n').count() + 1;
+            if loop_lines.contains(&line) {
+                let (start, end) = get_line_offsets(code, line);
+                let line_text = get_line_text(code, line).unwrap_or_default();
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: self.severity().to_string(),
+                    line,
+                    column: 0,
+                    start_byte: start,
+                    end_byte: end,
+                    snippet: line_text.trim().to_string(),
+                    problem: ".clone() called inside a loop. This creates a new allocation on every iteration which is expensive.".to_string(),
+                    fix_hint: "Consider using a reference ('&') or borrowing instead of cloning. If cloning is necessary, move the object outside the loop.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RUST-QUAL-011: Unnecessary Box<T> Allocation
+// Severity: low
+// Detects: Box::new() for types that don't need heap allocation
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct RustUnnecessaryBox;
+
+impl LangRule for RustUnnecessaryBox {
+    fn id(&self) -> &str { "RUST-QUAL-011" }
+    fn name(&self) -> &str { "Unnecessary Box<T> Allocation" }
+    fn severity(&self) -> &'static str { "low" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let box_patterns = [
+            (r"Box::new\s*\(\s*(?:true|false|0|[1-9]\d*)\s*\)", "Box around primitive literal"),
+            (r##"Box::new\s*\(\s*"[^"]*"\s*\)"##, "Box around string literal"),
+            (r"Box::new\s*\(\s*'[^']*'\s*\)", "Box around char literal"),
+        ];
+
+        for (pat, desc) in &box_patterns {
+            if let Ok(re) = Regex::new(pat) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!("Unnecessary Box<T> allocation: {}. Box is for heap allocation of large data or trait objects.", desc),
+                        fix_hint: "Use the value directly without Box::new(). Only use Box<T> for: large structs on the stack, trait objects (dyn Trait), recursive types, or when ownership transfer is needed.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RUST-QUAL-012: TODO/FIXME Comments
+// Severity: info | CWE-546
+// Detects: TODO, FIXME, HACK, XXX markers in comments
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct RustTodoComments;
+
+impl LangRule for RustTodoComments {
+    fn id(&self) -> &str { "RUST-QUAL-012" }
+    fn name(&self) -> &str { "TODO / FIXME Comments" }
+    fn severity(&self) -> &'static str { "info" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let patterns = [
+            (r"(?i)TODO", "TODO marker"),
+            (r"(?i)FIXME", "FIXME marker"),
+            (r"(?i)HACK", "HACK marker"),
+            (r"(?i)XXX", "XXX marker"),
+        ];
+
+        for (pat, label) in &patterns {
+            if let Ok(re) = Regex::new(pat) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!("{}: Unresolved marker found in code.", label),
+                        fix_hint: "Resolve the TODO/FIXME or add a tracking issue.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RUST-QUAL-013: Dead Code - Unreachable Statements
+// Severity: info | CWE-561
+// Detects: return statements followed by more code
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct RustDeadCodeAfterReturn;
+
+impl LangRule for RustDeadCodeAfterReturn {
+    fn id(&self) -> &str { "RUST-QUAL-013" }
+    fn name(&self) -> &str { "Dead Code (Unreachable Statements)" }
+    fn severity(&self) -> &'static str { "info" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let return_re = Regex::new(r"(?m)^\s*return\s*;").unwrap();
+        let unreachable_re = Regex::new(r"(?m)^\s*(let|if|for|while|loop|match|break|continue)\b").unwrap();
+
+        let mut prev_returned = false;
+        for (i, line) in code.lines().enumerate() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with("/*") {
+                continue;
+            }
+            if return_re.is_match(line) {
+                prev_returned = true;
+                continue;
+            }
+            if prev_returned && unreachable_re.is_match(line) {
+                let (start, end) = get_line_offsets(code, i + 1);
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: self.severity().to_string(),
+                    line: i + 1,
+                    column: 0,
+                    start_byte: start,
+                    end_byte: end,
+                    snippet: trimmed.to_string(),
+                    problem: "Code after return statement is unreachable (dead code).".to_string(),
+                    fix_hint: "Remove unreachable code or restructure the control flow.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+            if !trimmed.is_empty() && !trimmed.starts_with('}') {
+                prev_returned = false;
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RUST-QUAL-014: Missing derive(Debug) on Error Types
+// Severity: low
+// Detects: struct/enum implementing std::error::Error without derive(Debug)
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct RustMissingDebugDerive;
+
+impl LangRule for RustMissingDebugDerive {
+    fn id(&self) -> &str { "RUST-QUAL-014" }
+    fn name(&self) -> &str { "Missing Debug Derive on Error Types" }
+    fn severity(&self) -> &'static str { "low" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let impl_error_re = Regex::new(r"impl\s+(?:\w+\s+)?(?:\w+\s+)?std::error::Error\s+for\s+(\w+)").unwrap();
+        let struct_re = Regex::new(r"(?m)^#\[derive\([^\]]*\)\]\s*\n\s*(?:pub\s+)?(?:enum|struct)\s+(\w+)").unwrap();
+
+        let error_types: std::collections::HashSet<&str> = impl_error_re
+            .captures_iter(code)
+            .filter_map(|c| c.get(1).map(|x| x.as_str()))
+            .collect();
+
+        if error_types.is_empty() {
+            return findings;
+        }
+
+        for m in struct_re.captures_iter(code) {
+            let type_name = m.get(1).map(|x| x.as_str()).unwrap_or("");
+            if error_types.contains(type_name) {
+                let derive_match = m.get(0).unwrap();
+                let derive_start = derive_match.start();
+                let derive_line = code[..derive_start].matches('\n').count() + 1;
+                let derive_text = &code[derive_start..derive_match.end()];
+
+                if !derive_text.contains("Debug") {
+                    let (start, end) = get_line_offsets(code, derive_line);
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line: derive_line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: derive_text.trim().to_string(),
+                        problem: format!("Error type '{}' implements std::error::Error but is missing derive(Debug). This prevents proper error formatting.", type_name),
+                        fix_hint: "Add Debug to derive: #[derive(Debug)] or #[derive(Debug, Display)].".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RUST-QUAL-015: Empty Match Arm
+// Severity: info | CWE-835
+// Detects: match arms that do nothing (empty block or just semicolon)
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct RustEmptyMatchArm;
+
+impl LangRule for RustEmptyMatchArm {
+    fn id(&self) -> &str { "RUST-QUAL-015" }
+    fn name(&self) -> &str { "Empty Match Arm" }
+    fn severity(&self) -> &'static str { "info" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let empty_arm_re = Regex::new(r"(?m)^\s*_\s*=>\s*\{\s*\},\s*$").unwrap();
+        let empty_arm_short_re = Regex::new(r"(?m)^\s*_\s*=>\s*,\s*$").unwrap();
+
+        for m in empty_arm_re.find_iter(code) {
+            let line = code[..m.start()].matches('\n').count() + 1;
+            let (start, end) = get_line_offsets(code, line);
+            let line_text = get_line_text(code, line).unwrap_or_default();
+            findings.push(LangFinding {
+                rule_id: self.id().to_string(),
+                severity: self.severity().to_string(),
+                line,
+                column: 0,
+                start_byte: start,
+                end_byte: end,
+                snippet: line_text.trim().to_string(),
+                problem: "Empty match arm '_ => {}' found. The wildcard arm does nothing.".to_string(),
+                fix_hint: "Handle the case explicitly or use debug_assert! to catch unexpected values. Consider logging or returning a Result.".to_string(),
+                auto_fix_available: false,
+            });
+        }
+
+        for m in empty_arm_short_re.find_iter(code) {
+            let line = code[..m.start()].matches('\n').count() + 1;
+            if !findings.iter().any(|f: &LangFinding| f.line == line) {
+                let (start, end) = get_line_offsets(code, line);
+                let line_text = get_line_text(code, line).unwrap_or_default();
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: self.severity().to_string(),
+                    line,
+                    column: 0,
+                    start_byte: start,
+                    end_byte: end,
+                    snippet: line_text.trim().to_string(),
+                    problem: "Empty match arm '_ => ,' found. The wildcard arm silently ignores the value.".to_string(),
+                    fix_hint: "Handle the case explicitly or add debug_assert! to catch unexpected values.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RUST-AI-004: AI Hardcoded Secrets
+// Severity: high | CWE-798
+// AI generates code with hardcoded API keys, passwords, tokens
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct RustAiHardcodedSecrets;
+
+impl LangRule for RustAiHardcodedSecrets {
+    fn id(&self) -> &str { "RUST-AI-004" }
+    fn name(&self) -> &str { "AI: Hardcoded Secrets in Code" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+        let patterns = [
+            (r##"(?i)(?:api[_-]?key|secret|password|passwd|token|auth|credential)\s*[=:]\s*["'][^'"]{4,}["']"##, "Hardcoded secret"),
+            (r##"(?i)password\s*=\s*["'][^'"]{4,}["']"##, "Hardcoded password"),
+            (r##"(?i)api[_-]?key\s*[=:]\s*["'][A-Za-z0-9_\-]{10,}["']"##, "Hardcoded API key"),
+            (r##"AKIA[0-9A-Z]{16}"##, "AWS Access Key ID"),
+            (r##"(?i)bearer\s+[A-Za-z0-9_\-\.]+"##, "Hardcoded Bearer token"),
+        ];
+
+        for (pat, desc) in &patterns {
+            if let Ok(re) = Regex::new(pat) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!("AI-generated code contains hardcoded {}: may expose credentials in source code.", desc),
+                        fix_hint: "Move secrets to environment variables: let key = env::var(\"API_KEY\").expect(\"API_KEY must be set\"); or use a secrets manager.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RUST-AI-005: AI Integer Overflow in Production
+// Severity: high | CWE-190
+// AI generates arithmetic without checked operations
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct RustAiIntegerOverflow;
+
+impl LangRule for RustAiIntegerOverflow {
+    fn id(&self) -> &str { "RUST-AI-005" }
+    fn name(&self) -> &str { "AI: Integer Overflow Risk in Production" }
+    fn severity(&self) -> &'static str { "high" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let overflow_risks = [
+            (r"\b\d+\s*[\+\-\*\/]\s*\d+", "Arithmetic operation without bounds check"),
+            (r"\b(?:usize|u8|u16|u32|u64|i8|i16|i32|i64)\s*::\s*MAX\b", "Using MAX constant without overflow check"),
+        ];
+
+        for (pat, desc) in &overflow_risks {
+            if let Ok(re) = Regex::new(pat) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+
+                    if line_text.trim().starts_with("//") || line_text.trim().starts_with("/*") {
+                        continue;
+                    }
+
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!("AI-generated arithmetic '{}' may overflow in production. Default Rust integer arithmetic panics on overflow in debug mode.", m.as_str()),
+                        fix_hint: "Use checked arithmetic (checked_add, checked_sub, checked_mul) or wrapping arithmetic (wrapping_add, etc.) depending on your needs. For user-facing code, prefer checked arithmetic with proper error handling.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RUST-AI-006: AI Panic in Library Public API
+// Severity: medium | CWE-248
+// AI generates pub fn with unwrap/expect without #[track_caller]
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct RustAiPanicInLibrary;
+
+impl LangRule for RustAiPanicInLibrary {
+    fn id(&self) -> &str { "RUST-AI-006" }
+    fn name(&self) -> &str { "AI: Panic Risk in Library Public API" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let func_re = Regex::new(r"(?m)^#\[(?:doc\s*)?\]?\s*\n\s*(?:pub\s+)+fn\s+(\w+)").unwrap();
+        let panic_re = Regex::new(r"\b(unwrap|expect|unwrap_err|expect_err)\s*\(").unwrap();
+
+        for caps in func_re.captures_iter(code) {
+            let func_name = caps.get(1).map(|x| x.as_str()).unwrap_or("");
+            let func_start = caps.get(0).unwrap().end();
+            let func_line = code[..caps.get(0).unwrap().start()].matches('\n').count() + 1;
+
+            let after_func = &code[func_start..];
+            let next_100 = after_func.lines().take(100).collect::<String>();
+            let brace_count = next_100.matches('{').count().saturating_sub(next_100.matches('}').count());
+            if brace_count == 0 {
+                continue;
+            }
+
+            let func_body_end = after_func.find(|c: char| c == '}').map(|p| func_start + p).unwrap_or(code.len());
+            let func_body = &code[func_start..func_body_end];
+
+            let has_track_caller = func_body.contains("#[track_caller]");
+            let has_panic = panic_re.is_match(func_body);
+
+            if has_panic && !has_track_caller {
+                let (start, end) = get_line_offsets(code, func_line);
+                let line_text = get_line_text(code, func_line).unwrap_or_default();
+
+                let panic_matches: Vec<&str> = panic_re
+                    .captures_iter(func_body)
+                    .filter_map(|caps| caps.get(1).map(|m| m.as_str()))
+                    .collect();
+
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: self.severity().to_string(),
+                    line: func_line,
+                    column: 0,
+                    start_byte: start,
+                    end_byte: end,
+                    snippet: line_text.trim().to_string(),
+                    problem: format!("Public library function '{}' uses {:?} which can panic. This creates a denial-of-service risk for callers.", func_name, panic_matches),
+                    fix_hint: "Return a Result or Option instead of panicking. If panicking is acceptable, add #[track_caller] for better stack traces. Consider using unwrap_or, unwrap_or_else, or ? operator.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RUST-AI-007: AI Incorrect Lifetime Annotation
+// Severity: medium | CWE-561
+// AI generates incorrect or unnecessary lifetime annotations
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct RustAiLifetimeIssues;
+
+impl LangRule for RustAiLifetimeIssues {
+    fn id(&self) -> &str { "RUST-AI-007" }
+    fn name(&self) -> &str { "AI: Lifetime Annotation Issues" }
+    fn severity(&self) -> &'static str { "medium" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let single_lifetime_re = Regex::new(r"fn\s+\w+<'a>\s*\([^)]*\)\s*->\s*[^&]*<'a>").unwrap();
+        let unnecessary_lifetime_re = Regex::new(r"fn\s+\w+<'a>\s*\([^)]*&'a\s+\w+[^)]*\)\s*->\s*&'a\s+\w+").unwrap();
+        let static_lifetime_re = Regex::new(r###"(?i)"static['"`]|Lifetime::static"###).unwrap();
+
+        for m in single_lifetime_re.find_iter(code) {
+            let line = code[..m.start()].matches('\n').count() + 1;
+            let (start, end) = get_line_offsets(code, line);
+            let line_text = get_line_text(code, line).unwrap_or_default();
+            findings.push(LangFinding {
+                rule_id: self.id().to_string(),
+                severity: self.severity().to_string(),
+                line,
+                column: 0,
+                start_byte: start,
+                end_byte: end,
+                snippet: line_text.trim().to_string(),
+                problem: "Single lifetime 'a used in return type but function doesn't borrow any references with that lifetime. The lifetime annotation may be unnecessary.".to_string(),
+                fix_hint: "Remove the unnecessary lifetime annotation: fn foo(x: &str) -> &str instead of fn foo<'a>(x: &'a str) -> &'a str.".to_string(),
+                auto_fix_available: false,
+            });
+        }
+
+        for m in unnecessary_lifetime_re.find_iter(code) {
+            let line = code[..m.start()].matches('\n').count() + 1;
+            let (start, end) = get_line_offsets(code, line);
+            let line_text = get_line_text(code, line).unwrap_or_default();
+            findings.push(LangFinding {
+                rule_id: self.id().to_string(),
+                severity: self.severity().to_string(),
+                line,
+                column: 0,
+                start_byte: start,
+                end_byte: end,
+                snippet: line_text.trim().to_string(),
+                problem: "Lifetime 'a is used for both input and output references but doesn't constrain the output. The lifetime may be unnecessary or incorrectly inferred.".to_string(),
+                fix_hint: "Remove the lifetime if it's only used once: fn foo(x: &str) -> &str. Or ensure the lifetime properly connects input and output references.".to_string(),
+                auto_fix_available: false,
+            });
+        }
+
+        for m in static_lifetime_re.find_iter(code) {
+            let line = code[..m.start()].matches('\n').count() + 1;
+            let (start, end) = get_line_offsets(code, line);
+            let line_text = get_line_text(code, line).unwrap_or_default();
+            if !line_text.trim().starts_with("//") && !line_text.trim().starts_with("/*") {
+                findings.push(LangFinding {
+                    rule_id: self.id().to_string(),
+                    severity: self.severity().to_string(),
+                    line,
+                    column: 0,
+                    start_byte: start,
+                    end_byte: end,
+                    snippet: line_text.trim().to_string(),
+                    problem: "'static lifetime annotation may be too restrictive. The data may not actually live for the entire program duration.".to_string(),
+                    fix_hint: "Only use 'static when the data truly lives for the entire program (e.g., string literals). For owned data, avoid 'static and let the compiler infer lifetimes.".to_string(),
+                    auto_fix_available: false,
+                });
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Registry function
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -698,5 +1531,19 @@ pub fn rust_quality_rules() -> Vec<Box<dyn LangRule>> {
         Box::new(RustUnsafeBlockAudit),
         Box::new(RustPanicInProduction),
         Box::new(RustMutableRefSharing),
+        Box::new(RustUnusedMut),
+        Box::new(RustCloneInLoop),
+        Box::new(RustUnnecessaryBox),
+        Box::new(RustTodoComments),
+        Box::new(RustDeadCodeAfterReturn),
+        Box::new(RustMissingDebugDerive),
+        Box::new(RustEmptyMatchArm),
+        Box::new(RustAiUnwrapPanic),
+        Box::new(RustAiUnsafeNoDocs),
+        Box::new(RustAiWrongSyncPrimitive),
+        Box::new(RustAiHardcodedSecrets),
+        Box::new(RustAiIntegerOverflow),
+        Box::new(RustAiPanicInLibrary),
+        Box::new(RustAiLifetimeIssues),
     ]
 }

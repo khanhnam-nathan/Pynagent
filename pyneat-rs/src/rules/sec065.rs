@@ -16,11 +16,18 @@
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::rules::base::{extract_snippet, Fix, Finding, Rule, Severity};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use tree_sitter::Tree;
 
 /// SEC-065: Insecure Logout Rule
 ///
 /// CWE-613: Insufficient Session Expiration
+static PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r#"(?i)(?:def|async\s+def)\s+(?:logout|signout)\s*\([^)]*\)\s*:\s*(?![\s\S]{0,500}(?:session\.pop|delete|flush|destroy|clear|invalidate))"#, "Logout function missing session destruction"),
+    (r#"(?i)response\.delete_cookie\([^)]+\)(?![\s\S]{0,200}(?:session|delete|flush|destroy|clear))"#, "Cookie deletion without server-side session destruction"),
+]);
+
 pub struct InsecureLogoutRule;
 
 impl Rule for InsecureLogoutRule {
@@ -31,13 +38,8 @@ impl Rule for InsecureLogoutRule {
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
 
-        let logout_patterns = [
-            (r#"(?i)(?:def|async\s+def)\s+(?:logout|signout)\s*\([^)]*\)\s*:\s*(?![\s\S]{0,500}(?:session\.pop|delete|flush|destroy|clear|invalidate))"#, "Logout function missing session destruction"),
-            (r#"(?i)response\.delete_cookie\([^)]+\)(?![\s\S]{0,200}(?:session|delete|flush|destroy|clear))"#, "Cookie deletion without server-side session destruction"),
-        ];
-
-        for (pattern, desc) in &logout_patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {

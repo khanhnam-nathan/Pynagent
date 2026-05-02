@@ -19,6 +19,7 @@
 
 pub mod parser;
 pub mod rules;
+pub mod quality_rules;
 
 use crate::scanner::ln_ast::LnAst;
 use crate::scanner::base::{LanguageScanner, Language, LangRule, LangFinding};
@@ -53,7 +54,9 @@ impl LanguageScanner for GoScanner {
     }
 
     fn rules(&self) -> Vec<Box<dyn LangRule>> {
-        rules::go_rules()
+        let mut all_rules = rules::go_rules();
+        all_rules.extend(quality_rules::go_quality_rules());
+        all_rules
     }
 
     fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {

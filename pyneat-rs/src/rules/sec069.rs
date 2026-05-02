@@ -16,11 +16,21 @@
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::rules::base::{extract_snippet, Fix, Finding, Rule, Severity};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use tree_sitter::Tree;
 
 /// SEC-069: Dangerous Dependencies Rule
 ///
 /// CWE-1104: Use of Unmaintained Third-Party Components
+static DEP_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r#"(?i)requests\s*[=<>~]+\s*(?:1\.|2\.[0-9]\.)"#, "Outdated requests library"),
+    (r#"(?i)(?:django|flask)\s*[=<>~]+\s*[0-2]\."#, "Outdated web framework"),
+    (r#"(?i)pycrypto\s*[=<>~]*"#, "PyCrypto is unmaintained, use pycryptodome"),
+    (r#"(?i)(?:debug|dev)[_-]?(?:only)?\s*[=<>~]*\s*['"]?(?:pdb|ipdb|pudb)"#, "Debug package in dependencies"),
+    (r#"(?i)pickle\s*[=<>~]*"#, "Pickle usage - consider json or msgpack"),
+]);
+
 pub struct DangerousDependenciesRule;
 
 impl Rule for DangerousDependenciesRule {
@@ -37,16 +47,8 @@ impl Rule for DangerousDependenciesRule {
                           code.contains("Pipfile");
 
         if is_dep_file {
-            let dangerous_deps = [
-                (r#"(?i)requests\s*[=<>~]+\s*(?:1\.|2\.[0-9]\.)"#, "Outdated requests library"),
-                (r#"(?i)(?:django|flask)\s*[=<>~]+\s*[0-2]\."#, "Outdated web framework"),
-                (r#"(?i)pycrypto\s*[=<>~]*"#, "PyCrypto is unmaintained, use pycryptodome"),
-                (r#"(?i)(?:debug|dev)[_-]?(?:only)?\s*[=<>~]*\s*['"]?(?:pdb|ipdb|pudb)"#, "Debug package in dependencies"),
-                (r#"(?i)pickle\s*[=<>~]*"#, "Pickle usage - consider json or msgpack"),
-            ];
-
-            for (pattern, desc) in &dangerous_deps {
-                if let Ok(re) = regex::Regex::new(pattern) {
+            for (pattern, desc) in DEP_PATTERNS.iter() {
+                if let Ok(re) = Regex::new(pattern) {
                     for m in re.find_iter(code) {
                         let snippet = extract_snippet(code, m.start(), m.end());
                         findings.push(Finding {

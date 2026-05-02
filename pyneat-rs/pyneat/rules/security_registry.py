@@ -1887,6 +1887,172 @@ SECURITY_RULES_REGISTRY: Dict[str, SecurityRuleMetadata] = {
         example_snippet="requests.get(metadata_url)",
     ),
 
+    # ========================================================================
+    # CRYPTOGRAPHY RULES (PY-CRYPT-001)
+    # ========================================================================
+
+    "PY-CRYPT-001": SecurityRuleMetadata(
+        id="PY-CRYPT-001",
+        name="Insecure Cryptographic Practices",
+        description="Detects insecure SSL verification bypass, ECB mode encryption, and weak crypto in Python",
+        severity="high",
+        cwe_id="CWE-327",
+        cwe_name="Use of Weak Cryptographic Algorithm",
+        owasp_id="A02",
+        owasp_name="Cryptographic Failures",
+        cvss_base=7.4,
+        cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+        can_auto_fix=False,
+        auto_fix_available=False,
+        fix_constraints=(
+            "Use requests with verify=True (default)",
+            "Use AES-GCM or ChaCha20-Poly1305 for encryption",
+            "Use hashlib.sha256 or hashlib.sha3_256 for integrity",
+            "Use secrets module for cryptographic randomness",
+        ),
+        do_not=(
+            "Do NOT use requests.get(verify=False) in production",
+            "Do NOT use AES.MODE_ECB - patterns are visible in ciphertext",
+            "Do NOT use MD5/SHA1 for security purposes",
+            "Do NOT disable SSL verification for 'testing' without reverting",
+        ),
+        verify=(
+            "Replace: requests.get(url, verify=False) -> verify=True",
+            "Replace: AES.MODE_ECB -> AES.MODE_GCM",
+            "Replace MD5: hashlib.md5 -> hashlib.sha256",
+        ),
+        resources=(
+            "https://docs.python.org/3/library/ssl.html",
+            "https://requests.readthedocs.io/en/latest/user/advanced/#ssl-cert-verification",
+            "https://pycryptodome.readthedocs.io/en/latest/",
+        ),
+        examples=(
+            "requests.get(url, verify=False)",
+            "AES.new(key, AES.MODE_ECB)",
+            "hashlib.md5(data)",
+            "ssl._create_unverified_context()",
+        ),
+        example_snippet="requests.get(url, verify=False)",
+    ),
+
+    # ========================================================================
+    # GRAPHQL SECURITY RULES
+    # ========================================================================
+
+    "GRAPHQL-001": SecurityRuleMetadata(
+        id="GRAPHQL-001",
+        name="GraphQL Introspection Enabled in Production",
+        description="Detects GraphQL introspection enabled which exposes schema details to clients",
+        severity="medium",
+        cwe_id="CWE-200",
+        cwe_name="Exposure of Sensitive Information to an Unauthorized Actor",
+        owasp_id="A01",
+        owasp_name="Broken Access Control",
+        cvss_base=5.3,
+        cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
+        can_auto_fix=False,
+        auto_fix_available=False,
+        fix_constraints=(
+            "Disable introspection in production: introspection: False",
+            "Use environment-based configuration to enable only in development",
+            "Implement proper authorization for introspection queries",
+        ),
+        do_not=(
+            "Do NOT leave introspection enabled in production",
+            "Do NOT expose schema through introspection without authentication",
+        ),
+        verify=(
+            "Test: curl -X POST with { __schema { types { name } } }",
+            "Check: introspection disabled in production config",
+        ),
+        resources=(
+            "https://graphql.org/learn/introspection/",
+            "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/01-Testing_GraphQL",
+        ),
+        examples=(
+            "introspection: True",
+            "playground: True",
+            "includeStacktraceInErrorResponses: True",
+        ),
+        example_snippet="introspection: True",
+    ),
+
+    "GRAPHQL-002": SecurityRuleMetadata(
+        id="GRAPHQL-002",
+        name="GraphQL Missing Depth Limit / Cost Analysis",
+        description="Detects GraphQL without depth limiting or cost analysis - DoS vulnerability",
+        severity="high",
+        cwe_id="CWE-400",
+        cwe_name="Uncontrolled Resource Consumption",
+        owasp_id="A04",
+        owasp_name="Insecure Design",
+        cvss_base=8.6,
+        cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+        can_auto_fix=False,
+        auto_fix_available=False,
+        fix_constraints=(
+            "Add depth limiting using graphql-depth-limit library",
+            "Implement query cost analysis (graphql-cost-analysis)",
+            "Set maximum depth based on schema complexity",
+        ),
+        do_not=(
+            "Do NOT accept arbitrary-depth GraphQL queries",
+            "Do NOT trust client-specified depth limits",
+        ),
+        verify=(
+            "Test: query { ... { ... { ... { ... } } } } }",
+            "Verify: queries exceeding depth are rejected",
+        ),
+        resources=(
+            "https://github.com/graphql/graphql-js/tree/main/packages/graphql-depth-limit",
+            "https://owasp.org/www-community/attacks/GraphQL",
+        ),
+        examples=(
+            "graphql(schema) without depth limit",
+            "make_executable_schema without validationRules",
+            "GraphQL(schema) without cost analysis",
+        ),
+        example_snippet="graphql(schema) without depth limiting",
+    ),
+
+    "GRAPHQL-003": SecurityRuleMetadata(
+        id="GRAPHQL-003",
+        name="GraphQL Batch Query Attack Risk",
+        description="Detects GraphQL batch queries without proper limits - resource exhaustion risk",
+        severity="medium",
+        cwe_id="CWE-770",
+        cwe_name="Allocation of Resources Without Limits or Throttling",
+        owasp_id="A04",
+        owasp_name="Insecure Design",
+        cvss_base=6.5,
+        cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+        can_auto_fix=False,
+        auto_fix_available=False,
+        fix_constraints=(
+            "Implement batch size limits: max_batch_size=10",
+            "Add per-operation complexity limits",
+            "Use rate limiting on batch endpoints",
+        ),
+        do_not=(
+            "Do NOT allow unlimited batch operations",
+            "Do NOT rely solely on client-specified batch sizes",
+        ),
+        verify=(
+            "Test: send batch of 100 queries",
+            "Verify: batch exceeding limit is rejected",
+        ),
+        resources=(
+            "https://graphql.org/learn/queries/#batching",
+            "https://www.apollographql.com/docs/apollo-server/data/data-connections/",
+        ),
+        examples=(
+            "batch_queries=True without limits",
+            "enable_batching without max_batch_size",
+            "Query batching without rate limiting",
+        ),
+        example_snippet="batch_queries=True without limits",
+    ),
+
     "SEC-059": SecurityRuleMetadata(
         id="SEC-059",
         name="Business Logic Vulnerability",

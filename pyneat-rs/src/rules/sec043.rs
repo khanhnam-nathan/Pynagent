@@ -16,7 +16,14 @@
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::rules::base::{extract_snippet, Fix, Finding, Rule, Severity};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use tree_sitter::Tree;
+
+static PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r#"@app\.after_request\s*\n\s*def\s+add_headers[^:]*:"#, "Flask after_request without security headers"),
+    (r#"response\.headers\[.*(?:X-Frame-Options|X-Content-Type-Options|Content-Security-Policy)"#, "Security header found"),
+]);
 
 pub struct Sec043;
 
@@ -27,13 +34,9 @@ impl Rule for Sec043 {
 
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r#"@app\.after_request\s*\n\s*def\s+add_headers[^:]*:"#, "Flask after_request without security headers"),
-            (r#"response\.headers\[.*(?:X-Frame-Options|X-Content-Type-Options|Content-Security-Policy)"#, "Security header found"),
-        ];
 
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {

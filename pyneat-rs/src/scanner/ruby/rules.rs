@@ -343,16 +343,7 @@ impl LangRule for RubyMissingRescue {
 
 /// Get all Ruby language rules.
 pub fn ruby_rules() -> Vec<Box<dyn LangRule>> {
-    let mut rules: Vec<Box<dyn LangRule>> = vec![
+    vec![
         Box::new(RubyTodoComments),
-        Box::new(RubyDebugOutput),
-        Box::new(RubyConsoleOutput),
-        Box::new(RubyGlobalVariables),
-        Box::new(RubyStringConcat),
-        Box::new(RubyMagicNumbers),
-        Box::new(RubyMissingSafeNav),
-        Box::new(RubyMissingRescue),
-    ];
-    rules.extend(crate::scanner::ruby::security_rules::ruby_security_rules());
-    rules
+    ]
 }

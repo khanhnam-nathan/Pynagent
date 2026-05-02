@@ -16,11 +16,23 @@
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::rules::base::{extract_snippet, Fix, Finding, Rule, Severity};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use tree_sitter::Tree;
 
 /// SEC-067: Weak Server-side Validation Rule
 ///
 /// CWE-20: Improper Input Validation
+static CLIENT_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r#"(?i)<script[^>]*>[\s\S]{0,500}(?:password|passwd).*?(?:regex|pattern|minlength|maxlength)[\s\S]{0,500}</script>"#, "Client-side password validation without server check"),
+    (r#"(?i)(?:onsubmit|submit)\s*=\s*['"]?return\s+validate"#, "Form validation without server-side counterpart"),
+    (r#"<input[^>]*\bpattern\s*=\s*['\"][^'\"]+['\"][^>]*>"#, "HTML5 pattern validation without server validation"),
+]);
+static SERVER_VALIDATION_PATTERNS: Lazy<Vec<&'static str>> = Lazy::new(|| vec![
+    r"(?i)(?:request\.validate|validate_input|sanitize|clean_input)",
+    r"(?i)(?:form\.is_valid|validate\()",
+]);
+
 pub struct WeakServerValidationRule;
 
 impl Rule for WeakServerValidationRule {
@@ -31,23 +43,12 @@ impl Rule for WeakServerValidationRule {
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
 
-        let client_only_patterns = [
-            (r#"(?i)<script[^>]*>[\s\S]{0,500}(?:password|passwd).*?(?:regex|pattern|minlength|maxlength)[\s\S]{0,500}</script>"#, "Client-side password validation without server check"),
-            (r#"(?i)(?:onsubmit|submit)\s*=\s*['"]?return\s+validate"#, "Form validation without server-side counterpart"),
-            (r#"<input[^>]*\bpattern\s*=\s*['\"][^'\"]+['\"][^>]*>"#, "HTML5 pattern validation without server validation"),
-        ];
-
-        let has_server_validation = [
-            r"(?i)(?:request\.validate|validate_input|sanitize|clean_input)",
-            r"(?i)(?:form\.is_valid|validate\()",
-        ];
-
-        let server_validation_found = has_server_validation.iter().any(|p| {
-            regex::Regex::new(p).map(|re| re.is_match(code)).unwrap_or(false)
+        let server_validation_found = SERVER_VALIDATION_PATTERNS.iter().any(|p| {
+            Regex::new(p).map(|re| re.is_match(code)).unwrap_or(false)
         });
 
-        for (pattern, desc) in &client_only_patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in CLIENT_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     if !server_validation_found {
                         let snippet = extract_snippet(code, m.start(), m.end());

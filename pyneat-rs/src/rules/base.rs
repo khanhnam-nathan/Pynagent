@@ -15,8 +15,6 @@
 //! You should have received a copy of the GNU Affero General Public License
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-#![allow(dead_code)]
-
 use serde::{Deserialize, Serialize};
 use tree_sitter::Tree;
 
@@ -116,6 +114,13 @@ pub trait Rule: Send + Sync {
     /// Check if this rule is enabled by default.
     fn enabled_by_default(&self) -> bool {
         true
+    }
+
+    /// Returns the list of languages this rule supports.
+    /// Returns None for rules that work on any language (e.g., Python eval detection).
+    /// Returns Some(&["php"]) for PHP-specific rules.
+    fn supported_languages(&self) -> Option<&'static [&'static str]> {
+        None
     }
 }
 

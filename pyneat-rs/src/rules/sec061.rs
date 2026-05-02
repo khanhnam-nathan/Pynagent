@@ -18,11 +18,20 @@
 //! Detects when external scripts/stylesheets are loaded without integrity check
 
 use crate::rules::base::{extract_snippet, Fix, Finding, Rule, Severity};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use tree_sitter::Tree;
 
 /// SEC-061: Missing SRI Rule
 ///
 /// CWE-345: Insufficient Verification of Data Authenticity
+static EXTERNAL_SCRIPT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"<script\s+[^>]*\bsrc\s*=\s*["']https?://[^"']+["'][^>]*>"#).unwrap()
+});
+static INTEGRITY_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"integrity\s*="#).unwrap()
+});
+
 pub struct MissingSriRule;
 
 impl Rule for MissingSriRule {
@@ -33,28 +42,21 @@ impl Rule for MissingSriRule {
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
 
-        let external_script_pattern = r#"<script\s+[^>]*\bsrc\s*=\s*["']https?://[^"']+["'][^>]*>"#;
-        let integrity_pattern = r#"integrity\s*="#;
-
-        if let Ok(script_re) = regex::Regex::new(external_script_pattern) {
-            if let Ok(int_re) = regex::Regex::new(integrity_pattern) {
-                for m in script_re.find_iter(code) {
-                    let matched = m.as_str();
-                    if !int_re.is_match(matched) && !matched.contains("localhost") && !matched.contains("127.0.0.1") {
-                        let snippet = extract_snippet(code, m.start(), m.end());
-                        findings.push(Finding {
-                            rule_id: "SEC-061".to_string(),
-                            severity: Severity::Medium.as_str().to_string(),
-                            cwe_id: Some("CWE-345".to_string()),
-                            cvss_score: Some(6.5),
-                            owasp_id: Some("A05:2021".to_string()),
-                            start: m.start(), end: m.end(), snippet,
-                            problem: "External script loaded without Subresource Integrity (SRI)".to_string(),
-                            fix_hint: "Add integrity and crossorigin attributes to external scripts.".to_string(),
-                            auto_fix_available: false,
-                        });
-                    }
-                }
+        for m in EXTERNAL_SCRIPT_RE.find_iter(code) {
+            let matched = m.as_str();
+            if !INTEGRITY_RE.is_match(matched) && !matched.contains("localhost") && !matched.contains("127.0.0.1") {
+                let snippet = extract_snippet(code, m.start(), m.end());
+                findings.push(Finding {
+                    rule_id: "SEC-061".to_string(),
+                    severity: Severity::Medium.as_str().to_string(),
+                    cwe_id: Some("CWE-345".to_string()),
+                    cvss_score: Some(6.5),
+                    owasp_id: Some("A05:2021".to_string()),
+                    start: m.start(), end: m.end(), snippet,
+                    problem: "External script loaded without Subresource Integrity (SRI)".to_string(),
+                    fix_hint: "Add integrity and crossorigin attributes to external scripts.".to_string(),
+                    auto_fix_available: false,
+                });
             }
         }
 

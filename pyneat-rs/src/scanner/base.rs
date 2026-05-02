@@ -15,10 +15,10 @@
 //! You should have received a copy of the GNU Affero General Public License
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-#![allow(dead_code)]
 #![allow(unused_variables)]
 
 use std::collections::HashMap;
+use rayon::prelude::*;
 use std::path::Path;
 
 use super::ln_ast::{LnAst, LnCall};
@@ -129,11 +129,10 @@ pub trait LanguageScanner: Send + Sync {
 
     /// Detect issues using this language's rules.
     fn detect(&self, tree: &LnAst, code: &str) -> Vec<LangFinding> {
-        let mut findings = vec![];
-        for rule in self.rules() {
-            findings.extend(rule.detect(tree, code));
-        }
-        findings
+        self.rules()
+            .par_iter()
+            .flat_map(|rule| rule.detect(tree, code))
+            .collect()
     }
 }
 

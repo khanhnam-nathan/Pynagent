@@ -15,10 +15,9 @@
 //! You should have received a copy of the GNU Affero General Public License
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-#![allow(dead_code)]
 
-use std::collections::HashMap;
-
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use tree_sitter::{Parser, Tree, Node};
 
 use super::ln_ast::{
@@ -27,6 +26,14 @@ use super::ln_ast::{
     TODO_MARKERS,
 };
 use super::ParseError;
+
+/// AHashMap for faster hashing in hot paths
+type AHashMap<K, V> = std::collections::HashMap<K, V, ahash::RandomState>;
+
+/// Build a fast hasher suitable for short-lived HashMaps
+fn fast_hasher() -> ahash::RandomState {
+    ahash::RandomState::new()
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Language {
@@ -68,15 +75,19 @@ impl Language {
 
 pub fn detect_language_from_extension(ext: &str) -> Option<String> {
     let ext = ext.trim_start_matches('.').to_lowercase();
-    let mapping: HashMap<&str, &str> = [
-        ("py", "python"), ("pyw", "python"),
-        ("js", "javascript"), ("jsx", "javascript"),
-        ("mjs", "javascript"), ("cjs", "javascript"),
-        ("ts", "typescript"), ("tsx", "typescript"),
-        ("go", "go"), ("java", "java"), ("rs", "rust"),
-        ("cs", "csharp"), ("php", "php"), ("rb", "ruby"),
-    ].into_iter().collect();
-    mapping.get(ext.as_str()).map(|s| s.to_string())
+    // Use AHashMap for faster lookups
+    static EXT_MAP: once_cell::sync::Lazy<AHashMap<&str, &str>> =
+        once_cell::sync::Lazy::new(|| {
+            let mut m = AHashMap::with_hasher(fast_hasher());
+            m.insert("py", "python"); m.insert("pyw", "python");
+            m.insert("js", "javascript"); m.insert("jsx", "javascript");
+            m.insert("mjs", "javascript"); m.insert("cjs", "javascript");
+            m.insert("ts", "typescript"); m.insert("tsx", "typescript");
+            m.insert("go", "go"); m.insert("java", "java"); m.insert("rs", "rust");
+            m.insert("cs", "csharp"); m.insert("php", "php"); m.insert("rb", "ruby");
+            m
+        });
+    EXT_MAP.get(ext.as_str()).map(|s| s.to_string())
 }
 
 pub fn parse_ln_ast(code: &str, language: &str) -> Result<LnAst, ParseError> {
@@ -93,23 +104,34 @@ pub fn parse_ln_ast(code: &str, language: &str) -> Result<LnAst, ParseError> {
     Ok(ast)
 }
 
+/// Parse with a cached language reference for better performance
 fn parse_with_language(code: &str, lang: &Language) -> Result<Tree, ParseError> {
-    let mut parser = Parser::new();
-    #[allow(non_snake_case)]
-    let lang_ref = match lang {
-        Language::Python => tree_sitter_python::LANGUAGE.into(),
-        Language::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
-        Language::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
-        Language::Go => tree_sitter_go::LANGUAGE.into(),
-        Language::Java => tree_sitter_java::LANGUAGE.into(),
-        Language::Rust => tree_sitter_rust::LANGUAGE.into(),
-        Language::CSharp => tree_sitter_c_sharp::LANGUAGE.into(),
-        Language::Php => tree_sitter_php::LANGUAGE_PHP.into(),
-        Language::Ruby => tree_sitter_ruby::LANGUAGE.into(),
-    };
-    parser.set_language(&lang_ref)
-        .map_err(|e| ParseError::LanguageError(e.to_string()))?;
-    parser.parse(code, None).ok_or(ParseError::ParseFailed)
+    // Cache parsers per language to avoid re-creating them
+    thread_local! {
+        static PARSERS: std::cell::RefCell<AHashMap<Language, Parser>> =
+            std::cell::RefCell::new(AHashMap::with_hasher(fast_hasher()));
+    }
+
+    PARSERS.with(|parsers| {
+        let mut parsers = parsers.borrow_mut();
+        let parser = parsers.entry(*lang).or_insert_with(|| {
+            let mut p = Parser::new();
+            let lang_ref = match lang {
+                Language::Python => tree_sitter_python::LANGUAGE.into(),
+                Language::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
+                Language::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+                Language::Go => tree_sitter_go::LANGUAGE.into(),
+                Language::Java => tree_sitter_java::LANGUAGE.into(),
+                Language::Rust => tree_sitter_rust::LANGUAGE.into(),
+                Language::CSharp => tree_sitter_c_sharp::LANGUAGE.into(),
+                Language::Php => tree_sitter_php::LANGUAGE_PHP.into(),
+                Language::Ruby => tree_sitter_ruby::LANGUAGE.into(),
+            };
+            let _ = p.set_language(&lang_ref);
+            p
+        });
+        parser.parse(code, None).ok_or(ParseError::ParseFailed)
+    })
 }
 
 fn walk_tree_and_extract(node: &Node, code: &str, lang: &Language, ast: &mut LnAst) {
@@ -201,8 +223,22 @@ fn extract_python(node: &Node, code: &str, kind: &str, ast: &mut LnAst) {
         }
         "call" => {
             let func = node.child_by_field_name("function").map(|n| get_text(&n, code)).unwrap_or_default();
+            let args: Vec<String> = node
+                .child_by_field_name("arguments")
+                .map(|args_node| {
+                    let mut arg_texts = Vec::new();
+                    let mut cursor = args_node.walk();
+                    for child in args_node.children(&mut cursor) {
+                        let text = get_text(&child, code);
+                        if !text.is_empty() {
+                            arg_texts.push(text);
+                        }
+                    }
+                    arg_texts
+                })
+                .unwrap_or_default();
             ast.calls.push(LnCall {
-                callee: func, start_line: sp.row + 1, end_line: ep.row + 1, arguments: vec![],
+                callee: func, start_line: sp.row + 1, end_line: ep.row + 1, arguments: args,
             });
         }
         "string" => {
@@ -377,6 +413,11 @@ fn extract_go(node: &Node, code: &str, kind: &str, ast: &mut LnAst) {
                 callee: func, start_line: sp.row + 1, end_line: ep.row + 1, arguments: vec![],
             });
         }
+        "string" => {
+            ast.strings.push(LnString {
+                value: get_text(node, code), start_line: sp.row + 1, end_line: ep.row + 1,
+            });
+        }
         "comment" => {
             let text = get_text(node, code);
             ast.comments.push(LnComment {
@@ -441,6 +482,11 @@ fn extract_java(node: &Node, code: &str, kind: &str, ast: &mut LnAst) {
             let func = node.child_by_field_name("name").map(|n| get_text(&n, code)).unwrap_or_default();
             ast.calls.push(LnCall {
                 callee: func, start_line: sp.row + 1, end_line: ep.row + 1, arguments: vec![],
+            });
+        }
+        "string_literal" => {
+            ast.strings.push(LnString {
+                value: get_text(node, code), start_line: sp.row + 1, end_line: ep.row + 1,
             });
         }
         "comment" => {
@@ -513,6 +559,11 @@ fn extract_rust(node: &Node, code: &str, kind: &str, ast: &mut LnAst) {
                 callee: name, start_line: sp.row + 1, end_line: ep.row + 1, arguments: vec![],
             });
         }
+        "string_literal" => {
+            ast.strings.push(LnString {
+                value: get_text(node, code), start_line: sp.row + 1, end_line: ep.row + 1,
+            });
+        }
         "line_comment" | "block_comment" => {
             let text = get_text(node, code);
             ast.comments.push(LnComment { text: text.clone(), start_line: sp.row + 1, end_line: ep.row + 1 });
@@ -570,6 +621,25 @@ fn extract_csharp(node: &Node, code: &str, kind: &str, ast: &mut LnAst) {
                 });
             }
         }
+        "invocation_expression" => {
+            // C# method/property invocation: obj.Method()
+            let func = node.child_by_field_name("expression").map(|n| get_text(&n, code)).unwrap_or_default();
+            ast.calls.push(LnCall {
+                callee: func, start_line: sp.row + 1, end_line: ep.row + 1, arguments: vec![],
+            });
+        }
+        "object_creation_expression" => {
+            // C# new Type()
+            let type_name = node.child_by_field_name("type").map(|n| get_text(&n, code)).unwrap_or_default();
+            ast.calls.push(LnCall {
+                callee: format!("new {}", type_name), start_line: sp.row + 1, end_line: ep.row + 1, arguments: vec![],
+            });
+        }
+        "string" => {
+            ast.strings.push(LnString {
+                value: get_text(node, code), start_line: sp.row + 1, end_line: ep.row + 1,
+            });
+        }
         "comment" => {
             let text = get_text(node, code);
             ast.comments.push(LnComment { text: text.clone(), start_line: sp.row + 1, end_line: ep.row + 1 });
@@ -626,6 +696,17 @@ fn extract_php(node: &Node, code: &str, kind: &str, ast: &mut LnAst) {
                 start_byte: node.start_byte(), end_byte: node.end_byte(),
             });
         }
+        "function_call_expression" => {
+            let func = node.child_by_field_name("function").map(|n| get_text(&n, code)).unwrap_or_default();
+            ast.calls.push(LnCall {
+                callee: func, start_line: sp.row + 1, end_line: ep.row + 1, arguments: vec![],
+            });
+        }
+        "string" => {
+            ast.strings.push(LnString {
+                value: get_text(node, code), start_line: sp.row + 1, end_line: ep.row + 1,
+            });
+        }
         "comment" => {
             let text = get_text(node, code);
             ast.comments.push(LnComment { text: text.clone(), start_line: sp.row + 1, end_line: ep.row + 1 });
@@ -659,6 +740,24 @@ fn extract_ruby(node: &Node, code: &str, kind: &str, ast: &mut LnAst) {
             ast.classes.push(LnClass {
                 name, start_line: sp.row + 1, end_line: ep.row + 1,
                 start_byte: node.start_byte(), end_byte: node.end_byte(),
+            });
+        }
+        "send" => {
+            let func = node.child_by_field_name("method").map(|n| get_text(&n, code)).unwrap_or_default();
+            ast.calls.push(LnCall {
+                callee: func, start_line: sp.row + 1, end_line: ep.row + 1, arguments: vec![],
+            });
+        }
+        "command" => {
+            // Ruby: `method arg` style calls
+            let func = node.child_by_field_name("method").map(|n| get_text(&n, code)).unwrap_or_default();
+            ast.calls.push(LnCall {
+                callee: func, start_line: sp.row + 1, end_line: ep.row + 1, arguments: vec![],
+            });
+        }
+        "string" => {
+            ast.strings.push(LnString {
+                value: get_text(node, code), start_line: sp.row + 1, end_line: ep.row + 1,
             });
         }
         "comment" => {

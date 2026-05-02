@@ -455,6 +455,58 @@ impl LangRule for PhpMissingReturnType {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PHP-QUAL-007: TODO/FIXME Comments
+// Severity: info | CWE-546
+// AI leaves TODO/FIXME markers in code
+// Auto-fix: not available
+// ─────────────────────────────────────────────────────────────────────────────
+pub struct PhpTodoComments;
+
+impl LangRule for PhpTodoComments {
+    fn id(&self) -> &str { "PHP-QUAL-007" }
+    fn name(&self) -> &str { "TODO / FIXME Comments" }
+    fn severity(&self) -> &'static str { "info" }
+
+    fn detect(&self, _tree: &LnAst, code: &str) -> Vec<LangFinding> {
+        let mut findings = vec![];
+
+        let patterns = [
+            (r"(?i)TODO", "TODO marker"),
+            (r"(?i)FIXME", "FIXME marker"),
+            (r"(?i)HACK", "HACK marker"),
+            (r"(?i)XXX", "XXX marker"),
+        ];
+
+        for (pat, label) in &patterns {
+            if let Ok(re) = Regex::new(pat) {
+                for m in re.find_iter(code) {
+                    let line = code[..m.start()].matches('\n').count() + 1;
+                    let (start, end) = get_line_offsets(code, line);
+                    let line_text = get_line_text(code, line).unwrap_or_default();
+                    findings.push(LangFinding {
+                        rule_id: self.id().to_string(),
+                        severity: self.severity().to_string(),
+                        line,
+                        column: 0,
+                        start_byte: start,
+                        end_byte: end,
+                        snippet: line_text.trim().to_string(),
+                        problem: format!("{}: Unresolved marker found in code.", label),
+                        fix_hint: "Resolve the TODO/FIXME or add a tracking issue.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+
+        findings.sort_by_key(|f| f.line);
+        findings
+    }
+
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Module exports
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -467,5 +519,6 @@ pub fn php_quality_rules() -> Vec<Box<dyn LangRule>> {
         Box::new(PhpSuperglobalUsage),
         Box::new(PhpInlineHtml),
         Box::new(PhpMissingReturnType),
+        Box::new(PhpTodoComments),
     ]
 }

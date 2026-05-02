@@ -16,7 +16,101 @@
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::rules::base::{extract_snippet, Fix, Finding, Rule, Severity};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use tree_sitter::Tree;
+
+static PHP001_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"mysqli_query\s*\([^,]+,\s*['"][^'"]*\.(?:\s*\.\s*)?(?:GET|POST|REQUEST|COOKIE)"##, "mysqli_query() with string concatenation and user input"),
+    (r##"mysql_query\s*\(\s*['"][^'"]*(?:\s*\.\s*)?(?:GET|POST|REQUEST|COOKIE)"##, "mysql_query() (deprecated) with user input"),
+    (r##"\$pdo\s*->\s*query\s*\(\s*['"][^'"]*\.(?:\s*\.\s*)?(?:GET|POST|REQUEST|COOKIE)"##, "$pdo->query() with string concatenation"),
+]);
+
+static PHP002_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"echo\s+(?:GET|POST|REQUEST|COOKIE|SESSION)\s*[\['"][^\['"]+[\]['"]"##, "echo with unsanitized superglobal"),
+    (r##"print\s+(?:GET|POST|REQUEST|COOKIE|SESSION)\s*[\['"][^\['"]+[\]['"]"##, "print with unsanitized superglobal"),
+]);
+
+static PHP003_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"move_uploaded_file\s*\([^,]+,\s*['"][^'"]*"##, "move_uploaded_file() without extension validation"),
+]);
+
+static PHP004_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"(?:GET|POST|REQUEST|COOKIE)\s*[\['"][^\['"]+[\]['"]\s*=="##, "Loose comparison with GET/POST/REQUEST/COOKIE"),
+    (r##"(?:GET|POST|REQUEST|COOKIE)\s*[\['"][^\['"]+[\]['"]\s*!="# ##"##, "Loose non-equality with GET/POST/REQUEST/COOKIE"),
+]);
+
+static PHP005_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"eval\s*\("##, "eval() usage - direct code execution"),
+    (r##"assert\s*\("##, "assert() usage"),
+    (r##"create_function\s*\("##, "create_function() - deprecated"),
+]);
+
+static PHP006_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"unserialize\s*\(\s*(?:GET|POST|REQUEST|COOKIE|SESSION)"##, "unserialize() with user-supplied data"),
+]);
+
+static PHP007_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"include\s*\(\s*(?:GET|POST|REQUEST|COOKIE)"##, "include() with user-supplied path"),
+    (r##"require\s*\(\s*(?:GET|POST|REQUEST|COOKIE)"##, "require() with user-supplied path"),
+    (r##"file_get_contents\s*\(\s*(?:GET|POST|REQUEST|COOKIE)"##, "file_get_contents() with user-supplied path"),
+]);
+
+static PHP008_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"mysqli_connect\s*\(\s*['"][^'"]+['"]\s*,\s*['"][^'"]+['"]\s*,\s*['"][^'"]+['"]"##, "mysqli_connect() with hardcoded credentials"),
+    (r##"new\s+PDO\s*\(\s*['"]mysql:host=[^'"]+;dbname=[^'"]+['"]\s*,\s*['"][^'"]+['"]\s*,\s*['"][^'"]+['"]"##, "PDO with hardcoded credentials in DSN"),
+]);
+
+static PHP009_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"exec\s*\(\s*['"][^'"]*\.(?:\s*\.\s*)?(?:GET|POST|REQUEST|COOKIE)"##, "exec() with string concatenation and user input"),
+    (r##"shell_exec\s*\(\s*['"][^'"]*\.(?:\s*\.\s*)?(?:GET|POST|REQUEST|COOKIE)"##, "shell_exec() with string concatenation and user input"),
+    (r##"system\s*\(\s*['"][^'"]*\.(?:\s*\.\s*)?(?:GET|POST|REQUEST|COOKIE)"##, "system() with string concatenation and user input"),
+]);
+
+static PHP010_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"file_get_contents\s*\(\s*(?:GET|POST|REQUEST|COOKIE)"##, "file_get_contents() with user-controlled URL"),
+    (r##"curl_setopt\s*\(\s*\$ch\s*,\s*CURLOPT_URL\s*,\s*(?:GET|POST|REQUEST|COOKIE)"##, "cURL with user-controlled URL"),
+]);
+
+static PHP011_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"ini_set\s*\(\s*['"]display_errors['"]\s*,\s*['"]1['"]"##, "ini_set('display_errors', '1') - exposes errors"),
+    (r##"var_dump\s*\(\s*(?:GET|POST|REQUEST|COOKIE)"##, "var_dump() of superglobals - debug output"),
+    (r##"phpinfo\s*\("##, "phpinfo() call - exposes PHP configuration"),
+]);
+
+static PHP012_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"ini_set\s*\(\s*['"]session\.cookie_httponly['"]\s*,\s*['"]0['"]"##, "session.cookie_httponly disabled - XSS can steal session"),
+    (r##"ini_set\s*\(\s*['"]session\.cookie_secure['"]\s*,\s*['"]0['"]"##, "session.cookie_secure disabled on HTTPS"),
+]);
+
+static PHP013_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"if\s*\(\s*\$_SERVER\s*[\['"][']REQUEST_METHOD[METHOD]['\"]\s*]\s*==\s*['"]POST['"]\s*\)\s*\{"##, "POST form handler without CSRF check"),
+]);
+
+static PHP014_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"simplexml_load_string\s*\(\s*(?:GET|POST|REQUEST|COOKIE|file_get_contents)"##, "simplexml_load_string() with untrusted XML"),
+    (r##"new\s+SimpleXMLElement\s*\(\s*(?:GET|POST|REQUEST|COOKIE|file_get_contents)"##, "SimpleXMLElement constructor with untrusted XML"),
+]);
+
+static PHP015_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"header\s*\(\s*['"]Location:\s*['"]\s*\.\s*(?:GET|POST|REQUEST|COOKIE)"##, "header('Location:') with user input"),
+    (r##"header\s*\(\s*['"]Location:\s*['"]\s*\.\s*\$_(?:GET|POST|REQUEST|COOKIE)"##, "header('Location:') with superglobal"),
+]);
+
+static PHP016_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"ldap_search\s*\([^)]*\.(?:\s*\.\s*)?(?:GET|POST|REQUEST|COOKIE)"##, "ldap_search() with user input in DN or filter"),
+]);
+
+static PHP017_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"->fill\s*\(\s*\$_"##, "Model->fill() with request data"),
+    (r##"->update\s*\(\s*\$_POST\s*\)"##, "Model->update() with $_POST directly"),
+    (r##"->update\s*\(\s*\$_REQUEST\s*\)"##, "Model->update() with $_REQUEST directly"),
+]);
+
+static PHP018_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"phpinfo\s*\("##, "phpinfo() call - exposes PHP configuration"),
+    (r##"echo\s+\$\w+_ENV"##, "echo of environment variables"),
+]);
 
 // PHP-SEC-001: PHP SQL Injection
 pub struct PhpSqlInjectionRule;
@@ -24,15 +118,11 @@ impl Rule for PhpSqlInjectionRule {
     fn id(&self) -> &str { "PHP-SEC-001" }
     fn name(&self) -> &str { "PHP SQL Injection" }
     fn severity(&self) -> Severity { Severity::Critical }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["php"]) }
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r##"mysqli_query\s*\([^,]+,\s*['"][^'"]*\.(?:\s*\.\s*)?(?:GET|POST|REQUEST|COOKIE)"##, "mysqli_query() with string concatenation and user input"),
-            (r##"mysql_query\s*\(\s*['"][^'"]*(?:\s*\.\s*)?(?:GET|POST|REQUEST|COOKIE)"##, "mysql_query() (deprecated) with user input"),
-            (r##"\$pdo\s*->\s*query\s*\(\s*['"][^'"]*\.(?:\s*\.\s*)?(?:GET|POST|REQUEST|COOKIE)"##, "$pdo->query() with string concatenation"),
-        ];
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PHP001_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {
@@ -61,14 +151,11 @@ impl Rule for PhpXssRule {
     fn id(&self) -> &str { "PHP-SEC-002" }
     fn name(&self) -> &str { "PHP Cross-Site Scripting (XSS)" }
     fn severity(&self) -> Severity { Severity::High }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["php"]) }
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r##"echo\s+(?:GET|POST|REQUEST|COOKIE|SESSION)\s*[\['"][^\['"]+[\]['"]"##, "echo with unsanitized superglobal"),
-            (r##"print\s+(?:GET|POST|REQUEST|COOKIE|SESSION)\s*[\['"][^\['"]+[\]['"]"##, "print with unsanitized superglobal"),
-        ];
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PHP002_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {
@@ -97,13 +184,11 @@ impl Rule for PhpInsecureFileUploadRule {
     fn id(&self) -> &str { "PHP-SEC-003" }
     fn name(&self) -> &str { "PHP Insecure File Upload" }
     fn severity(&self) -> Severity { Severity::Critical }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["php"]) }
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r##"move_uploaded_file\s*\([^,]+,\s*['"][^'"]*"##, "move_uploaded_file() without extension validation"),
-        ];
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PHP003_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {
@@ -132,14 +217,11 @@ impl Rule for PhpLooseComparisonRule {
     fn id(&self) -> &str { "PHP-SEC-004" }
     fn name(&self) -> &str { "PHP Loose Comparison (Type Juggling)" }
     fn severity(&self) -> Severity { Severity::High }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["php"]) }
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r##"(?:GET|POST|REQUEST|COOKIE)\s*[\['"][^\['"]+[\]['"]\s*=="##, "Loose comparison with GET/POST/REQUEST/COOKIE"),
-            (r##"(?:GET|POST|REQUEST|COOKIE)\s*[\['"][^\['"]+[\]['"]\s*!="# ##"##, "Loose non-equality with GET/POST/REQUEST/COOKIE"),
-        ];
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PHP004_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {
@@ -168,15 +250,14 @@ impl Rule for PhpEvalAssertRule {
     fn id(&self) -> &str { "PHP-SEC-005" }
     fn name(&self) -> &str { "PHP eval() and assert() Usage" }
     fn severity(&self) -> Severity { Severity::Critical }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["php"]) }
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
+        if !code.contains("<?php") && !code.contains("<?=") && !code.starts_with("#!/usr/bin/php") {
+            return vec![];
+        }
         let mut findings = Vec::new();
-        let patterns = [
-            (r##"eval\s*\("##, "eval() usage - direct code execution"),
-            (r##"assert\s*\("##, "assert() usage"),
-            (r##"create_function\s*\("##, "create_function() - deprecated"),
-        ];
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PHP005_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {
@@ -205,13 +286,11 @@ impl Rule for PhpUnserializeRule {
     fn id(&self) -> &str { "PHP-SEC-006" }
     fn name(&self) -> &str { "PHP unserialize() Vulnerability" }
     fn severity(&self) -> Severity { Severity::Critical }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["php"]) }
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r##"unserialize\s*\(\s*(?:GET|POST|REQUEST|COOKIE|SESSION)"##, "unserialize() with user-supplied data"),
-        ];
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PHP006_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {
@@ -240,15 +319,11 @@ impl Rule for PhpIncludeTraversalRule {
     fn id(&self) -> &str { "PHP-SEC-007" }
     fn name(&self) -> &str { "PHP Local/Remote File Inclusion" }
     fn severity(&self) -> Severity { Severity::Critical }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["php"]) }
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r##"include\s*\(\s*(?:GET|POST|REQUEST|COOKIE)"##, "include() with user-supplied path"),
-            (r##"require\s*\(\s*(?:GET|POST|REQUEST|COOKIE)"##, "require() with user-supplied path"),
-            (r##"file_get_contents\s*\(\s*(?:GET|POST|REQUEST|COOKIE)"##, "file_get_contents() with user-supplied path"),
-        ];
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PHP007_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {
@@ -277,14 +352,11 @@ impl Rule for PhpHardcodedSecretsRule {
     fn id(&self) -> &str { "PHP-SEC-008" }
     fn name(&self) -> &str { "PHP Hardcoded Database Credentials" }
     fn severity(&self) -> Severity { Severity::High }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["php"]) }
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r##"mysqli_connect\s*\(\s*['"][^'"]+['"]\s*,\s*['"][^'"]+['"]\s*,\s*['"][^'"]+['"]"##, "mysqli_connect() with hardcoded credentials"),
-            (r##"new\s+PDO\s*\(\s*['"]mysql:host=[^'"]+;dbname=[^'"]+['"]\s*,\s*['"][^'"]+['"]\s*,\s*['"][^'"]+['"]"##, "PDO with hardcoded credentials in DSN"),
-        ];
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PHP008_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {
@@ -313,15 +385,11 @@ impl Rule for PhpCommandInjectionRule {
     fn id(&self) -> &str { "PHP-SEC-009" }
     fn name(&self) -> &str { "PHP OS Command Injection" }
     fn severity(&self) -> Severity { Severity::Critical }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["php"]) }
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r##"exec\s*\(\s*['"][^'"]*\.(?:\s*\.\s*)?(?:GET|POST|REQUEST|COOKIE)"##, "exec() with string concatenation and user input"),
-            (r##"shell_exec\s*\(\s*['"][^'"]*\.(?:\s*\.\s*)?(?:GET|POST|REQUEST|COOKIE)"##, "shell_exec() with string concatenation and user input"),
-            (r##"system\s*\(\s*['"][^'"]*\.(?:\s*\.\s*)?(?:GET|POST|REQUEST|COOKIE)"##, "system() with string concatenation and user input"),
-        ];
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PHP009_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {
@@ -350,14 +418,11 @@ impl Rule for PhpSsrfRule {
     fn id(&self) -> &str { "PHP-SEC-010" }
     fn name(&self) -> &str { "PHP Server-Side Request Forgery (SSRF)" }
     fn severity(&self) -> Severity { Severity::High }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["php"]) }
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r##"file_get_contents\s*\(\s*(?:GET|POST|REQUEST|COOKIE)"##, "file_get_contents() with user-controlled URL"),
-            (r##"curl_setopt\s*\(\s*\$ch\s*,\s*CURLOPT_URL\s*,\s*(?:GET|POST|REQUEST|COOKIE)"##, "cURL with user-controlled URL"),
-        ];
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PHP010_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {
@@ -386,15 +451,11 @@ impl Rule for PhpDebugModeRule {
     fn id(&self) -> &str { "PHP-SEC-011" }
     fn name(&self) -> &str { "PHP Debug Mode and Error Display" }
     fn severity(&self) -> Severity { Severity::Medium }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["php"]) }
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r##"ini_set\s*\(\s*['"]display_errors['"]\s*,\s*['"]1['"]"##, "ini_set('display_errors', '1') - exposes errors"),
-            (r##"var_dump\s*\(\s*(?:GET|POST|REQUEST|COOKIE)"##, "var_dump() of superglobals - debug output"),
-            (r##"phpinfo\s*\("##, "phpinfo() call - exposes PHP configuration"),
-        ];
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PHP011_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {
@@ -423,14 +484,11 @@ impl Rule for PhpSessionRule {
     fn id(&self) -> &str { "PHP-SEC-012" }
     fn name(&self) -> &str { "PHP Weak Session Management" }
     fn severity(&self) -> Severity { Severity::Medium }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["php"]) }
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r##"ini_set\s*\(\s*['"]session\.cookie_httponly['"]\s*,\s*['"]0['"]"##, "session.cookie_httponly disabled - XSS can steal session"),
-            (r##"ini_set\s*\(\s*['"]session\.cookie_secure['"]\s*,\s*['"]0['"]"##, "session.cookie_secure disabled on HTTPS"),
-        ];
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PHP012_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {
@@ -459,13 +517,11 @@ impl Rule for PhpCsrfRule {
     fn id(&self) -> &str { "PHP-SEC-013" }
     fn name(&self) -> &str { "PHP Missing CSRF Protection" }
     fn severity(&self) -> Severity { Severity::Medium }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["php"]) }
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r##"if\s*\(\s*\$_SERVER\s*[\['"][']REQUEST_METHOD[METHOD]['\"]\s*]\s*==\s*['"]POST['"]\s*\)\s*\{"##, "POST form handler without CSRF check"),
-        ];
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PHP013_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {
@@ -494,14 +550,11 @@ impl Rule for PhpXxeRule {
     fn id(&self) -> &str { "PHP-SEC-014" }
     fn name(&self) -> &str { "PHP XML External Entity (XXE)" }
     fn severity(&self) -> Severity { Severity::High }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["php"]) }
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r##"simplexml_load_string\s*\(\s*(?:GET|POST|REQUEST|COOKIE|file_get_contents)"##, "simplexml_load_string() with untrusted XML"),
-            (r##"new\s+SimpleXMLElement\s*\(\s*(?:GET|POST|REQUEST|COOKIE|file_get_contents)"##, "SimpleXMLElement constructor with untrusted XML"),
-        ];
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PHP014_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {
@@ -530,14 +583,11 @@ impl Rule for PhpOpenRedirectRule {
     fn id(&self) -> &str { "PHP-SEC-015" }
     fn name(&self) -> &str { "PHP Open Redirect" }
     fn severity(&self) -> Severity { Severity::Medium }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["php"]) }
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r##"header\s*\(\s*['"]Location:\s*['"]\s*\.\s*(?:GET|POST|REQUEST|COOKIE)"##, "header('Location:') with user input"),
-            (r##"header\s*\(\s*['"]Location:\s*['"]\s*\.\s*\$_(?:GET|POST|REQUEST|COOKIE)"##, "header('Location:') with superglobal"),
-        ];
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PHP015_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {
@@ -566,13 +616,11 @@ impl Rule for PhpLdapInjectionRule {
     fn id(&self) -> &str { "PHP-SEC-016" }
     fn name(&self) -> &str { "PHP LDAP Injection" }
     fn severity(&self) -> Severity { Severity::High }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["php"]) }
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r##"ldap_search\s*\([^)]*\.(?:\s*\.\s*)?(?:GET|POST|REQUEST|COOKIE)"##, "ldap_search() with user input in DN or filter"),
-        ];
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PHP016_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {
@@ -601,15 +649,11 @@ impl Rule for PhpMassAssignmentRule {
     fn id(&self) -> &str { "PHP-SEC-017" }
     fn name(&self) -> &str { "PHP Mass Assignment" }
     fn severity(&self) -> Severity { Severity::Medium }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["php"]) }
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r##"->fill\s*\(\s*\$_"##, "Model->fill() with request data"),
-            (r##"->update\s*\(\s*\$_POST\s*\)"##, "Model->update() with $_POST directly"),
-            (r##"->update\s*\(\s*\$_REQUEST\s*\)"##, "Model->update() with $_REQUEST directly"),
-        ];
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PHP017_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {
@@ -638,14 +682,11 @@ impl Rule for PhpInfoDisclosureRule {
     fn id(&self) -> &str { "PHP-SEC-018" }
     fn name(&self) -> &str { "PHP Information Disclosure" }
     fn severity(&self) -> Severity { Severity::Medium }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["php"]) }
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let patterns = [
-            (r##"phpinfo\s*\("##, "phpinfo() call - exposes PHP configuration"),
-            (r##"echo\s+\$\w+_ENV"##, "echo of environment variables"),
-        ];
-        for (pattern, desc) in &patterns {
-            if let Ok(re) = regex::Regex::new(pattern) {
+        for (pattern, desc) in PHP018_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
                 for m in re.find_iter(code) {
                     let snippet = extract_snippet(code, m.start(), m.end());
                     findings.push(Finding {

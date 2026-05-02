@@ -29,6 +29,7 @@ from pathlib import Path
 from datetime import datetime
 
 from pyneat.core.engine import RuleEngine, clear_module_cache
+from pyneat.core.incremental_cache import IncrementalCache
 from pyneat import __version__
 from pyneat.core.types import RuleConfig
 from pyneat.rules.imports import ImportCleaningRule
@@ -50,6 +51,7 @@ from pyneat.rules.range_len_pattern import RangeLenRule
 from pyneat.rules.typing import TypingRule
 from pyneat.rules.match_case import MatchCaseRule
 from pyneat.rules.dataclass import DataclassSuggestionRule
+from pyneat.plugins.loader import PluginLoader
 
 # ----------------------------------------------------------------------
 # Helpers
@@ -110,7 +112,8 @@ def _build_engine(config: dict,
                   enable_naming: bool,
                   enable_refactoring: bool,
                   enable_comment_clean: bool,
-                  debug_clean_mode: str = 'off') -> RuleEngine:
+                  debug_clean_mode: str = 'off',
+                  plugin_loader: Optional[PluginLoader] = None) -> RuleEngine:
     """Build a RuleEngine from config dict and CLI flags.
 
     Args:
@@ -179,7 +182,7 @@ def _build_engine(config: dict,
         if enable_match_case or config.get("enable_match_case", False):
             rules.append(MatchCaseRule(RuleConfig(enabled=True)))
 
-    return RuleEngine(rules)
+    return RuleEngine(rules, plugin_loader=plugin_loader)
 
 
 # ----------------------------------------------------------------------
@@ -204,7 +207,7 @@ def cli(color: str):
 
 @click.pass_context
 @cli.command()
-@click.argument('input_file', type=str)  # Use str instead of click.Path to avoid resolution issues
+@click.argument('input_file', type=str, default='.', required=False)
 @click.option('--output', '-o', type=str, default=None, help='Output file path')
 @click.option('--lang', '-l', 'lang_opt', type=str, default=None,
               help='Language: javascript, typescript, go, java, rust, csharp, php, ruby, python')
@@ -265,14 +268,34 @@ def clean(input_file: str, output: str, lang_opt: str, in_place: bool, verbose: 
 
     Supports multi-language cleaning via --lang flag (JS, TS, Go, Java, Rust, C#, PHP, Ruby).
     """
-    # Resolve input path - try relative first, then absolute
+    # Resolve input path - try current dir first, then recursive search
     input_path = Path(input_file)
-    if not input_path.is_absolute() and not input_path.exists():
-        # Try relative to current working directory
-        input_path = Path.cwd() / input_file
+    if not input_path.is_absolute():
+        # Try as-is first (relative to cwd)
+        if not input_path.exists():
+            # Try in current directory specifically
+            cwd_path = Path.cwd() / input_file
+            if cwd_path.exists():
+                input_path = cwd_path
+            elif input_path.suffix and '.' in input_file:
+                # Looks like a filename without path - search recursively in cwd
+                matches = list(Path.cwd().rglob(input_file))
+                if len(matches) == 1:
+                    input_path = matches[0]
+                elif len(matches) > 1:
+                    click.echo(f"[ERROR] Multiple files found matching '{input_file}':", err=True)
+                    for m in matches[:5]:
+                        click.echo(f"  - {m}", err=True)
+                    if len(matches) > 5:
+                        click.echo(f"  ... and {len(matches) - 5} more", err=True)
+                    return 1
+                else:
+                    click.echo(f"[ERROR] File not found: {input_file}", err=True)
+                    click.echo(f"  Searched in: {Path.cwd()}", err=True)
+                    return 1
+
     if not input_path.exists():
         click.echo(f"[ERROR] File not found: {input_file}", err=True)
-        click.echo(f"  Tried: {input_path}", err=True)
         return 1
 
     if enable_all:
@@ -289,6 +312,11 @@ def clean(input_file: str, output: str, lang_opt: str, in_place: bool, verbose: 
         clear_module_cache()
 
     config = _load_config()
+
+    # Load plugins
+    loader = PluginLoader()
+    loader.load_all()
+
     engine = _build_engine(
         config, package, enable_security, enable_quality, enable_performance,
         enable_unused, enable_redundant, enable_is_not_none, enable_magic_numbers,
@@ -297,6 +325,7 @@ def clean(input_file: str, output: str, lang_opt: str, in_place: bool, verbose: 
         enable_import_cleaning, enable_naming, enable_refactoring,
         enable_comment_clean,
         debug_clean_mode=debug_mode,
+        plugin_loader=loader,
     )
 
     # Multi-language: add universal rules
@@ -463,7 +492,7 @@ def _process_single_file(
 
 
 @cli.command()
-@click.argument('dir_path', type=click.Path(exists=True))
+@click.argument('dir_path', type=click.Path(exists=True), default='.', required=False)
 @click.option('--pattern', '-p', default="*.py", help='Glob pattern to match files')
 @click.option('--in-place', '-i', is_flag=True, help='Modify files in place')
 @click.option('--backup', '-b', is_flag=True, help='Create backup before in-place editing')
@@ -506,6 +535,8 @@ def _process_single_file(
 @click.option('--workers', '-w', type=int, default=None, help='Number of parallel workers (default: auto)')
 @click.option('--clear-cache', is_flag=True, help='Clear the module-level AST cache before processing')
 @click.option('--export-manifest', is_flag=True, help='Export PYNAGENT manifest JSON file')
+@click.option('--incremental', is_flag=True, default=False,
+              help='Only process files that changed since last scan (uses .pyneat-cache/)')
 @click.pass_context
 def clean_dir(ctx, dir_path: str, pattern: str, in_place: bool, backup: bool,
               backup_suffix: str, verbose: bool,
@@ -523,7 +554,7 @@ def clean_dir(ctx, dir_path: str, pattern: str, in_place: bool, backup: bool,
               enable_comment_clean: bool,
               debug_mode: str, dry_run: bool, diff: bool,
               parallel: bool, workers: Optional[int],
-              clear_cache: bool, export_manifest: bool):
+              clear_cache: bool, export_manifest: bool, incremental: bool):
     """Clean all Python files in a directory recursively."""
     if enable_all:
         enable_import_cleaning = True
@@ -541,6 +572,11 @@ def clean_dir(ctx, dir_path: str, pattern: str, in_place: bool, backup: bool,
         clear_module_cache()
 
     config = _load_config()
+
+    # Load plugins
+    loader = PluginLoader()
+    loader.load_all()
+
     engine = _build_engine(
         config, package, enable_security, enable_quality, enable_performance,
         enable_unused, enable_redundant, enable_is_not_none, enable_magic_numbers,
@@ -549,6 +585,7 @@ def clean_dir(ctx, dir_path: str, pattern: str, in_place: bool, backup: bool,
         enable_import_cleaning, enable_naming, enable_refactoring,
         enable_comment_clean,
         debug_clean_mode=debug_mode,
+        plugin_loader=loader,
     )
 
     if verbose:
@@ -573,6 +610,13 @@ def clean_dir(ctx, dir_path: str, pattern: str, in_place: bool, backup: bool,
     if diff or dry_run:
         # Process files individually to get original content for diff
         files = list(path.rglob(pattern))
+
+        if incremental:
+            cache = IncrementalCache().load()
+            changed_files = cache.filter_changed(files)
+            unchanged_count = len(files) - len(changed_files)
+            files = changed_files
+            click.echo(f"[INCREMENTAL] Skipped {unchanged_count} unchanged file(s), processing {len(files)} changed file(s)")
 
         results: list[dict] = []
         total_changes = 0
@@ -621,12 +665,24 @@ def clean_dir(ctx, dir_path: str, pattern: str, in_place: bool, backup: bool,
         success_count = sum(1 for r in results if r['success'])
         failed_count = sum(1 for r in results if not r['success'])
 
+        if incremental:
+            cache.save()
+
         click.echo(f"\nSummary: {success_count} ok, {failed_count} failed, {total_changes} total changes")
         return 0
 
     # Default behavior (no dry-run, no diff)
     files = list(path.rglob(pattern))
     files = [f for f in files if not any(skip_name in f.parts for skip_name in skip)]
+
+    if incremental:
+        cache = IncrementalCache().load()
+        total_count = len(files)
+        files = cache.filter_changed(files)
+        unchanged_count = total_count - len(files)
+        click.echo(f"[INCREMENTAL] Skipped {unchanged_count} unchanged file(s), processing {len(files)} changed file(s)")
+    else:
+        cache = None  # type: ignore
 
     click.echo(f"\nProcessing: {len(files)} file(s)")
 
@@ -729,7 +785,9 @@ def clean_dir(ctx, dir_path: str, pattern: str, in_place: bool, backup: bool,
             click.echo(f"[OK] --in-place completed (no backup created)")
         click.echo(f"[OK] Files modified: {written_count}")
 
-    # Export manifest if requested
+    if incremental:
+        cache.save()
+    cache = None  # type: ignore
     if export_manifest:
         manifest_path = Path(dir_path) / '.pyneat.manifest.json'
         try:
@@ -819,8 +877,46 @@ def rules():
 # --------------------------------------------------------------------------
 
 
+def _make_dep_finding(df: dict) -> 'DependencyFinding':
+    """Convert a Rust DependencyFinding dict to a Python DependencyFinding object."""
+    from pyneat.core.types import DependencyFinding
+
+    kind = df.get("kind", "")
+    cve_id = df.get("cve_id")
+    ghsa_id = df.get("ghsa_id")
+    description = df.get("description", "")
+
+    severity_map = {"cve": "high", "license": "medium"}
+    sev = severity_map.get(kind, "info")
+
+    source = "CVE" if kind == "cve" else "License"
+    if cve_id and ghsa_id:
+        source = "Both"
+    elif ghsa_id:
+        source = "GitHub-Advisory"
+
+    rule_id_map = {
+        "cve": "SEC-DEP-001",
+        "license": "SEC-DEP-002",
+    }
+
+    return DependencyFinding(
+        rule_id=rule_id_map.get(kind, "SEC-DEP-UNK"),
+        severity=sev,
+        package=df.get("package", ""),
+        version=df.get("version", ""),
+        ecosystem=df.get("ecosystem", ""),
+        cve_id=cve_id,
+        ghsa_id=ghsa_id,
+        description=description,
+        fixed_version=df.get("fixed_version"),
+        source=source,
+        recommendation=f"Upgrade to >={df.get('fixed_version', 'latest')}" if df.get("fixed_version") else "Review and update dependency",
+    )
+
+
 @cli.command()
-@click.argument('target', type=click.Path(exists=True))
+@click.argument('target', type=str, default='.', required=False)
 @click.option('--lang', '-l', 'lang_opt', type=str, default=None,
               help='Language: javascript, typescript, go, java, rust, csharp, php, ruby, python')
 @click.option('--severity', is_flag=True, help='Show severity levels (CRITICAL/HIGH/MEDIUM/LOW/INFO)')
@@ -831,10 +927,18 @@ def rules():
 @click.option('--fail-on', type=click.Choice(['critical', 'high', 'medium']),
               default=None, help='Exit with code 1 if issues >= severity found')
 @click.option('--skip-deps', is_flag=True, help='Skip dependency vulnerability scan')
+@click.option('--deps/--no-deps', 'use_deps', default=True,
+              help='Enable dependency scanning (on by default, use --no-deps to disable)')
+@click.option('--check-cve/--no-check-cve', default=False,
+              help='Check packages against OSV.dev for CVE vulnerabilities')
+@click.option('--check-license/--no-check-license', default=False,
+              help='Check license compliance of dependencies')
+@click.option('--lock-files', is_flag=True,
+              help='Discover and list lock files in the target directory')
 @click.option('--verbose', '-v', is_flag=True, help='Verbose output')
 @click.option('--rust/--no-rust', 'use_rust', default=None,
               help='Force enable/disable Rust scanner (default: auto-detect)')
-def check(target, lang_opt, severity, cvss, output, format, fail_on, skip_deps, verbose, use_rust):
+def check(target, lang_opt, severity, cvss, output, format, fail_on, skip_deps, use_deps, check_cve, check_license, lock_files, verbose, use_rust):
     """Security scan - detect vulnerabilities without auto-fix.
 
     Runs the full security pack (50+ rules) against the target file or directory.
@@ -855,15 +959,42 @@ def check(target, lang_opt, severity, cvss, output, format, fail_on, skip_deps, 
     import json
     import time
 
+    # Resolve target path - try current dir first, then recursive search
     target_path = Path(target)
+    if not target_path.is_absolute():
+        # Try as-is first (relative to cwd)
+        if not target_path.exists():
+            # Try in current directory specifically
+            cwd_path = Path.cwd() / target
+            if cwd_path.exists():
+                target_path = cwd_path
+            elif target_path.suffix and '.' in target:
+                # Looks like a filename without path - search recursively in cwd
+                matches = list(Path.cwd().rglob(target))
+                if len(matches) == 1:
+                    target_path = matches[0]
+                elif len(matches) > 1:
+                    click.echo(f"[ERROR] Multiple files found matching '{target}':", err=True)
+                    for m in matches[:5]:
+                        click.echo(f"  - {m}", err=True)
+                    if len(matches) > 5:
+                        click.echo(f"  ... and {len(matches) - 5} more", err=True)
+                    return 1
+                else:
+                    click.echo(f"[ERROR] File not found: {target}", err=True)
+                    click.echo(f"  Searched in: {Path.cwd()}", err=True)
+                    return 1
+
     ignore_mgr = IgnoreManager()
 
     # Try Rust scanner first if available and not disabled
     rust_results = []
+    rust_available = False
     if use_rust is None or use_rust:
         from pyneat.scanner.rust_scanner import get_scanner
         scanner = get_scanner()
         if scanner.is_available:
+            rust_available = True
             if verbose:
                 click.echo(f"Using Rust scanner (v{scanner.version}) for security scan")
             rust_results = scanner.scan_file(str(target_path))
@@ -871,7 +1002,19 @@ def check(target, lang_opt, severity, cvss, output, format, fail_on, skip_deps, 
             click.echo("Warning: Rust scanner requested but not available", err=True)
 
     # Build security engine for Python fallback
-    engine = RuleEngine([SecurityScannerRule()])
+    # When Rust scanner is available, skip Python regex rules to avoid duplicates
+    # (Rust already covers the same patterns). Python AST-based rules still run
+    # for AI bug detection (AIBugRule).
+    if rust_available:
+        engine = RuleEngine()
+        # Only add AIBugRule for AI-specific pattern detection
+        try:
+            from pyneat.rules.ai_bugs import AIBugRule
+            engine.add_rule(AIBugRule())
+        except ImportError:
+            pass
+    else:
+        engine = RuleEngine([SecurityScannerRule()])
     # For multi-language mode, also add universal rules (cross-language)
     use_universal = bool(lang_opt)
     if use_universal:
@@ -967,14 +1110,49 @@ def check(target, lang_opt, severity, cvss, output, format, fail_on, skip_deps, 
 
     # Scan dependencies if not skipped
     dep_findings = []
-    if not skip_deps:
-        from pyneat.tools.security.dependency_scanner import DependencyScanner
-        scanner = DependencyScanner()
-        if target_path.is_file():
-            parent_dir = target_path.parent
-        else:
-            parent_dir = target_path
-        dep_findings = scanner.scan_directory(parent_dir)
+    # Lock file discovery (no scanning, just list)
+    if lock_files:
+        try:
+            from pyneat_rs import discover_lockfiles as rust_discover
+            lock_json = rust_discover(str(target_path))
+            import json as json_mod
+            lock_data = json_mod.loads(lock_json)
+            if lock_data:
+                click.echo("")
+                click.secho("  DISCOVERED LOCK FILES", fg="cyan", bold=True)
+                for lf in lock_data:
+                    click.echo(f"    {lf.get('ecosystem', 'unknown')}: {lf.get('path', lf.get('file_name', '?'))}")
+            else:
+                click.echo("")
+                click.secho("  No lock files found.", fg="yellow")
+        except ImportError:
+            click.echo("")
+            click.secho("  Lock file discovery requires the Rust backend.", fg="yellow")
+            click.echo("  Install with: pip install pyneat[rust]")
+
+    # Full dependency scan
+    if not skip_deps and use_deps:
+        # Try Rust backend first for deep scanning
+        try:
+            from pyneat_rs import scan_dependencies as rust_scan_deps
+            rust_result = rust_scan_deps(str(target_path), check_cve=check_cve, check_license=check_license)
+            import json as json_mod
+            rust_data = json_mod.loads(rust_result)
+            if rust_data.get("dependency_findings"):
+                for df in rust_data["dependency_findings"]:
+                    dep_findings.append(_make_dep_finding(df))
+        except ImportError:
+            pass
+
+        # Fallback to Python scanner
+        if not dep_findings:
+            from pyneat.tools.security.dependency_scanner import DependencyScanner
+            scanner = DependencyScanner()
+            if target_path.is_file():
+                parent_dir = target_path.parent
+            else:
+                parent_dir = target_path
+            dep_findings = scanner.scan_directory(parent_dir)
 
     elapsed = time.time() - start_time
 
@@ -1149,10 +1327,12 @@ def check(target, lang_opt, severity, cvss, output, format, fail_on, skip_deps, 
         }
         fail_threshold = fail_severities.get(fail_on, 0)
         current_threshold = 999
-        for sev, label in severity_order:
+        sev_label = ""
+        for sev, label, _ in severity_order:
             count = summary.get(sev, 0)
             if count > 0:
                 current_threshold = fail_severities.get(sev, 0)
+                sev_label = label
                 break
 
         if current_threshold <= fail_threshold:
@@ -1320,7 +1500,7 @@ def ignore(rule_id, file, line, is_global, reason):
 
 
 @cli.command()
-@click.argument('target', type=click.Path(exists=True))
+@click.argument('target', type=str, default='.', required=False)
 @click.option('--format', '-f', type=click.Choice(['json', 'sarif', 'html']),
               default='json', help='Report format')
 @click.option('--output', '-o', type=click.Path(), required=True, help='Output file path')
@@ -1340,7 +1520,29 @@ def report(target, format, output):
     import json
     import time
 
+    # Resolve target path
     target_path = Path(target)
+    if not target_path.is_absolute() and not target_path.exists():
+        cwd_path = Path.cwd() / target
+        if cwd_path.exists():
+            target_path = cwd_path
+        elif target_path.suffix and '.' in target:
+            matches = list(Path.cwd().rglob(target))
+            if len(matches) == 1:
+                target_path = matches[0]
+            elif len(matches) > 1:
+                click.echo(f"[ERROR] Multiple files found matching '{target}':", err=True)
+                for m in matches[:5]:
+                    click.echo(f"  - {m}", err=True)
+                if len(matches) > 5:
+                    click.echo(f"  ... and {len(matches) - 5} more", err=True)
+                return 1
+
+    if not target_path.exists():
+        click.echo(f"[ERROR] Target not found: {target}", err=True)
+        click.echo(f"  Searched in: {Path.cwd()}", err=True)
+        return 1
+
     ignore_mgr = IgnoreManager()
     engine = RuleEngine([SecurityScannerRule()])
 
@@ -1606,8 +1808,7 @@ def show_feature_menu(last_command: str = "", context: str = "", ctx: click.Cont
         click.echo(f"      → {click.style(cmd, fg='green')}")
         click.echo("")
 
-    click.echo(f"  {click.style('[q]', fg='yellow', bold=True)} Exit - return to terminal")
-    click.echo(f"  {click.style('[Enter]', fg='white', dim=True)} Skip this menu")
+    click.echo(f"  {click.style('[q]', fg='yellow', bold=True)} Exit")
     click.echo("")
     click.echo("  ────────────────────────────────────────────────────────────")
     click.echo("")
@@ -1744,6 +1945,7 @@ def audit_deps(path, format, output, sbom_format):
         scanner.scan_installed_packages()
 
     # Generate output
+    out = None
     if format == 'summary':
         scanner.print_summary()
     elif format == 'json':
@@ -1753,11 +1955,11 @@ def audit_deps(path, format, output, sbom_format):
     elif format == 'sbom':
         out = scanner.generate_sbom(sbom_format)
 
-    if output:
+    if output and out:
         with open(output, 'w') as f:
             f.write(out)
         click.echo(f"\nReport written to {output}")
-    else:
+    elif out:
         click.echo(out)
 
 
@@ -1794,6 +1996,70 @@ def sbom_cmd(path, format, output, include_vulns):
         click.echo(f"SBOM written to {output}")
     else:
         click.echo(out)
+
+
+@cli.command(name='lsp')
+@click.option('--stdio', is_flag=True, default=True,
+              help='Use stdio transport (default, for IDE integration)')
+@click.option('--tcp', is_flag=True, help='Use TCP transport')
+@click.option('--port', type=int, default=4444, help='TCP port (default: 4444)')
+@click.option('--scan-on-save', is_flag=True, help='Scan file on save (default: enabled)')
+@click.option('--scan-on-type', is_flag=True, help='Scan as you type (requires debounce)')
+@click.option('--debounce-ms', type=int, default=500,
+              help='Delay in ms before scanning after keystroke (default: 500)')
+@click.option('--severity', type=click.Choice(['critical', 'high', 'medium', 'low', 'info']),
+              default='medium', help='Minimum severity to report (default: medium)')
+@click.option('--rules', type=str, default='',
+              help='Comma-separated list of rule IDs to enable (default: all)')
+def lsp(stdio, tcp, port, scan_on_save, scan_on_type, debounce_ms, severity, rules):
+    """Start PyNEAT LSP server for real-time IDE security scanning.
+
+    This starts the Language Server Protocol (LSP) server that provides:
+    - Real-time security diagnostics as you edit code
+    - Hover tooltips with rule explanations
+    - Quick-fix code actions for auto-fixable issues
+    - Debounced scanning to avoid performance impact
+
+    Usage:
+        pyneat lsp                  # Start with defaults (stdio mode)
+        pyneat lsp --tcp --port 4444  # TCP mode on port 4444
+
+    For IDE integration, the extension will automatically start the LSP server.
+    See .vscode-extension/ for the VS Code extension.
+
+    Examples:
+        pyneat lsp --severity high --debounce-ms 300
+        pyneat lsp --rules SEC-001,SEC-002,SEC-003
+    """
+    try:
+        from pyneat_rs import run_server
+    except ImportError:
+        click.secho("[ERROR] PyNEAT Rust backend not installed.", fg="red", bold=True)
+        click.echo("  Install with: pip install pyneat[rust]")
+        click.echo("  Or build from source: cd pyneat-rs && cargo build --release")
+        return 1
+
+    click.echo(f"Starting PyNEAT LSP server...")
+    if stdio:
+        click.echo(f"  Transport: stdio (for IDE integration)")
+    else:
+        click.echo(f"  Transport: TCP on port {port}")
+    click.echo(f"  Severity threshold: {severity}")
+    click.echo(f"  Debounce: {debounce_ms}ms")
+    click.echo(f"  Scan on save: {scan_on_save}")
+    click.echo(f"  Scan on type: {scan_on_type}")
+    if rules:
+        click.echo(f"  Rules: {rules}")
+
+    try:
+        run_server()
+    except KeyboardInterrupt:
+        click.echo("\nPyNEAT LSP server stopped.")
+    except Exception as e:
+        click.secho(f"[ERROR] LSP server error: {e}", fg="red", bold=True)
+        return 1
+
+    return 0
 
 
 if __name__ == '__main__':

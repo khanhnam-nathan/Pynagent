@@ -16,11 +16,26 @@
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::rules::base::{extract_snippet, Fix, Finding, Rule, Severity};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use tree_sitter::Tree;
 
 /// SEC-063: Missing Rate Limiting Rule
 ///
 /// CWE-307: Improper Restriction of Excessive Authentication Attempts
+static ENDPOINT_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r#"(?i)@app\.route\(['"/](?:login|signin|auth/authenticate)['"]"#, "Login endpoint"),
+    (r#"(?i)@app\.route\(['"/](?:register|signup|create-account)['"]"#, "Registration endpoint"),
+    (r#"(?i)@app\.route\(['"/](?:password/reset|forgot|recover)['"]"#, "Password reset endpoint"),
+    (r#"(?i)@app\.route\(['"/](?:otp|2fa|two-factor|verify-code)['"]"#, "OTP/2FA endpoint"),
+]);
+static RATE_LIMIT_PATTERNS: Lazy<Vec<&'static str>> = Lazy::new(|| vec![
+    r"(?i)@rate_limit",
+    r"(?i)rate_limit",
+    r"(?i)limiter\.limit",
+    r"(?i)throttle",
+]);
+
 pub struct MissingRateLimitingRule;
 
 impl Rule for MissingRateLimitingRule {
@@ -31,26 +46,12 @@ impl Rule for MissingRateLimitingRule {
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
 
-        let sensitive_endpoints = [
-            (r#"(?i)@app\.route\(['"/](?:login|signin|auth/authenticate)['"]"#, "Login endpoint"),
-            (r#"(?i)@app\.route\(['"/](?:register|signup|create-account)['"]"#, "Registration endpoint"),
-            (r#"(?i)@app\.route\(['"/](?:password/reset|forgot|recover)['"]"#, "Password reset endpoint"),
-            (r#"(?i)@app\.route\(['"/](?:otp|2fa|two-factor|verify-code)['"]"#, "OTP/2FA endpoint"),
-        ];
-
-        let rate_limit_patterns = [
-            r"(?i)@rate_limit",
-            r"(?i)rate_limit",
-            r"(?i)limiter\.limit",
-            r"(?i)throttle",
-        ];
-
-        let has_rate_limit = rate_limit_patterns.iter().any(|p| {
-            regex::Regex::new(p).map(|re| re.is_match(code)).unwrap_or(false)
+        let has_rate_limit = RATE_LIMIT_PATTERNS.iter().any(|p| {
+            Regex::new(p).map(|re| re.is_match(code)).unwrap_or(false)
         });
 
-        for (endpoint_pattern, endpoint_name) in &sensitive_endpoints {
-            if let Ok(re) = regex::Regex::new(endpoint_pattern) {
+        for (endpoint_pattern, endpoint_name) in ENDPOINT_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(endpoint_pattern) {
                 for m in re.find_iter(code) {
                     if !has_rate_limit {
                         let snippet = extract_snippet(code, m.start(), m.end());

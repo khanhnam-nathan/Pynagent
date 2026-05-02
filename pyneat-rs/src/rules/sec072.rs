@@ -16,11 +16,20 @@
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::rules::base::{extract_snippet, Fix, Finding, Rule, Severity};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use tree_sitter::Tree;
 
 /// SEC-072: Missing CSP Nonce Rule
 ///
 /// CWE-1021: Improper Restriction of Rendered UI Layers
+static INLINE_SCRIPT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"<script[^>]*>"#).unwrap()
+});
+static CSP_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"Content-Security-Policy[^;]*script-src[^;]*"#).unwrap()
+});
+
 pub struct MissingCspNonceRule;
 
 impl Rule for MissingCspNonceRule {
@@ -31,31 +40,24 @@ impl Rule for MissingCspNonceRule {
     fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
         let mut findings = Vec::new();
 
-        let inline_script_pattern = r#"<script[^>]*>(?![\s\S]*?nonce[\s\S]*?</script>)"#;
-        let csp_pattern = r#"Content-Security-Policy[^;]*script-src[^;]*"#;
+        let has_csp = CSP_RE.is_match(code);
+        let has_nonce = code.contains("nonce");
 
-        if let Ok(script_re) = regex::Regex::new(inline_script_pattern) {
-            if let Ok(csp_re) = regex::Regex::new(csp_pattern) {
-                let has_csp = csp_re.is_match(code);
-                let has_nonce = code.contains("nonce");
-
-                for m in script_re.find_iter(code) {
-                    let matched = m.as_str();
-                    if !matched.contains("src=") && has_csp && !has_nonce {
-                        let snippet = extract_snippet(code, m.start(), m.end());
-                        findings.push(Finding {
-                            rule_id: "SEC-072".to_string(),
-                            severity: Severity::Medium.as_str().to_string(),
-                            cwe_id: Some("CWE-1021".to_string()),
-                            cvss_score: Some(5.3),
-                            owasp_id: Some("A05:2021".to_string()),
-                            start: m.start(), end: m.end(), snippet,
-                            problem: "Inline script with CSP but without nonce protection".to_string(),
-                            fix_hint: "Add nonce to CSP: Content-Security-Policy: script-src 'nonce-{RANDOM}'.".to_string(),
-                            auto_fix_available: false,
-                        });
-                    }
-                }
+        for m in INLINE_SCRIPT_RE.find_iter(code) {
+            let matched = m.as_str();
+            if !matched.contains("src=") && has_csp && !has_nonce {
+                let snippet = extract_snippet(code, m.start(), m.end());
+                findings.push(Finding {
+                    rule_id: "SEC-072".to_string(),
+                    severity: Severity::Medium.as_str().to_string(),
+                    cwe_id: Some("CWE-1021".to_string()),
+                    cvss_score: Some(5.3),
+                    owasp_id: Some("A05:2021".to_string()),
+                    start: m.start(), end: m.end(), snippet,
+                    problem: "Inline script with CSP but without nonce protection".to_string(),
+                    fix_hint: "Add nonce to CSP: Content-Security-Policy: script-src 'nonce-{RANDOM}'.".to_string(),
+                    auto_fix_available: false,
+                });
             }
         }
 

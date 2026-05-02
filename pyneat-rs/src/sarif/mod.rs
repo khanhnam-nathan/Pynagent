@@ -21,7 +21,31 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
-pub use writer::SarifBuilder;
+
+// --------------------------------------------------------------------------
+// Baseline Data Structures
+// --------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BaselineReport {
+    pub version: String,
+    pub generated_at: String,
+    pub total_files: usize,
+    pub findings: Vec<BaselineFinding>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BaselineFinding {
+    pub rule_id: String,
+    pub file_path: String,
+    pub line: usize,
+    pub column: usize,
+    pub end_line: usize,
+    pub end_column: usize,
+    pub severity: String,
+    pub message: String,
+    pub fingerprint: String,
+}
 
 // --------------------------------------------------------------------------
 // SARIF Data Structures
@@ -80,6 +104,7 @@ impl SarifRun {
         }
     }
 
+    #[allow(dead_code)]
     pub fn add_result(&mut self, result: SarifResult) {
         self.results.push(result);
     }
@@ -120,6 +145,7 @@ pub struct SarifDriver {
 }
 
 impl SarifDriver {
+    #[allow(dead_code)]
     pub fn new(name: &str, version: &str) -> Self {
         Self {
             name: name.to_string(),
@@ -271,6 +297,7 @@ impl SarifResult {
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_fix(mut self, fix: SarifFix) -> Self {
         self.fix = Some(fix);
         self
@@ -299,6 +326,29 @@ impl SarifResult {
             fix_hint: fix_hint.map(|s| s.to_string()),
             ..Default::default()
         });
+        self
+    }
+
+    /// Set AI-suggested fix properties on this result.
+    #[allow(dead_code)]
+    pub fn with_ai_fix(
+        mut self,
+        confidence: Option<f64>,
+        attack_scenario: Option<&str>,
+        references: Option<Vec<String>>,
+    ) -> Self {
+        if let Some(ref mut props) = self.properties {
+            props.ai_fix_confidence = confidence;
+            props.ai_fix_attack_scenario = attack_scenario.map(|s| s.to_string());
+            props.ai_fix_references = references;
+        } else {
+            self.properties = Some(SarifResultProperties {
+                ai_fix_confidence: confidence,
+                ai_fix_attack_scenario: attack_scenario.map(|s| s.to_string()),
+                ai_fix_references: references,
+                ..Default::default()
+            });
+        }
         self
     }
 }
@@ -390,6 +440,7 @@ pub struct SarifFix {
 }
 
 impl SarifFix {
+    #[allow(dead_code)]
     pub fn new(description: &str, uri: &str, replacements: Vec<SarifReplacement>) -> Self {
         Self {
             description: SarifMessage {
@@ -423,6 +474,7 @@ pub struct SarifReplacement {
 }
 
 impl SarifReplacement {
+    #[allow(dead_code)]
     pub fn new(start_line: usize, start_column: usize, end_line: usize, end_column: usize, text: &str) -> Self {
         Self {
             delete_region: SarifRegion {
@@ -472,6 +524,12 @@ pub struct SarifResultProperties {
     pub snippet: Option<String>,
     #[serde(rename = "fix-hint")]
     pub fix_hint: Option<String>,
+    #[serde(rename = "ai-fix-confidence")]
+    pub ai_fix_confidence: Option<f64>,
+    #[serde(rename = "ai-fix-attack-scenario")]
+    pub ai_fix_attack_scenario: Option<String>,
+    #[serde(rename = "ai-fix-references")]
+    pub ai_fix_references: Option<Vec<String>>,
     #[serde(rename = "custom-properties")]
     pub custom_properties: Option<HashMap<String, Value>>,
 }
@@ -524,6 +582,7 @@ pub fn severity_to_cvss(severity: &str) -> &'static str {
 }
 
 /// Convert byte offset to line/column.
+#[allow(dead_code)]
 pub fn byte_offset_to_line_column(code: &str, byte_offset: usize) -> (usize, usize) {
     let mut line = 1;
     let mut column = 1;
@@ -546,6 +605,7 @@ pub fn byte_offset_to_line_column(code: &str, byte_offset: usize) -> (usize, usi
 }
 
 /// Calculate byte offset from line/column.
+#[allow(dead_code)]
 pub fn line_column_to_byte_offset(code: &str, target_line: usize, target_column: usize) -> usize {
     let mut current_line = 1;
     let mut current_column = 1;

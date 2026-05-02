@@ -24,11 +24,13 @@ import logging
 import os
 import py_compile
 import tempfile
+import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple, Set
 
 import libcst as cst
+from cachetools import LRUCache
 
 from pyneat.core.types import (
     CodeFile, TransformationResult, RuleConfig,
@@ -39,6 +41,7 @@ from pyneat.rules.base import Rule
 from pyneat.core.atomic import AtomicWriter
 from pyneat.core.semantic_guard import SemanticDiffGuard
 from pyneat.core.type_shield import TypeAwareShield
+from pyneat.plugins.loader import PluginLoader
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +52,7 @@ logger = logging.getLogger(__name__)
 # engine instances benefits from the cache
 # ----------------------------------------------------------------------
 
-_module_cache: Dict[str, Tuple[ast.AST, cst.Module, float]] = {}
+_module_cache: LRUCache[str, Tuple[ast.AST, cst.Module, float]] = LRUCache(maxsize=2048)
 _cache_hits = 0
 _cache_misses = 0
 
@@ -103,10 +106,11 @@ def get_module_cache_stats() -> Dict[str, Any]:
 class RuleEngine:
     """Manages and executes cleaning rules."""
 
-    def __init__(self, rules: List[Rule] = None):
+    def __init__(self, rules: List[Rule] = None, plugin_loader: Optional[PluginLoader] = None):
         self.rules = rules or []
+        self.plugin_loader = plugin_loader
         self._rule_map = {rule.name: rule for rule in self.rules}
-        self._tree_cache: Dict[str, Tuple[ast.AST, cst.Module]] = {}
+        self._tree_cache: LRUCache[str, Tuple[ast.AST, cst.Module]] = LRUCache(maxsize=1024)
         self._cache_enabled = True
         self._processed_files: set[Path] = set()
         self.atomic_writer = AtomicWriter()
@@ -114,7 +118,17 @@ class RuleEngine:
         self.semantic_guard = SemanticDiffGuard()
         # Layer 6: Type-aware shield (disabled by default; enable via config)
         self.type_shield = TypeAwareShield(enabled=False)
-        self._type_baseline: Dict[Path, set] = {}
+        self._type_baseline: LRUCache[Path, Set[str]] = LRUCache(maxsize=512)
+
+        # Load plugin rules if a plugin loader is provided
+        if self.plugin_loader:
+            plugin_rules = self.plugin_loader.get_rules()
+            for rule_cls in plugin_rules:
+                try:
+                    rule_instance = rule_cls()
+                    self.add_rule(rule_instance)
+                except Exception:
+                    pass
 
     def _get_content_hash(self, content: str) -> str:
         """Get hash of content for caching."""
@@ -454,13 +468,16 @@ class RuleEngine:
                         # Fast check with ast.parse
                         ast.parse(current_content)
                         # Full bytecode compile check via temporary file
-                        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8") as tmp:
-                            tmp.write(current_content)
-                            tmp_name = tmp.name
-                        try:
-                            py_compile.compile(tmp_name, doraise=True)
-                        finally:
-                            Path(tmp_name).unlink(missing_ok=True)
+                        # Suppress SyntaxWarning from temp files (e.g., 'is' with literals in test code)
+                        with warnings.catch_warnings():
+                            warnings.filterwarnings("ignore", category=SyntaxWarning)
+                            with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8") as tmp:
+                                tmp.write(current_content)
+                                tmp_name = tmp.name
+                            try:
+                                py_compile.compile(tmp_name, doraise=True)
+                            finally:
+                                Path(tmp_name).unlink(missing_ok=True)
                     except (SyntaxError, py_compile.PyCompileError) as e:
                         # Rule produced invalid output  skip this rule
                         err_lineno = getattr(e, "lineno", None)

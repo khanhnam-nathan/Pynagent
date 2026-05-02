@@ -15,21 +15,23 @@
 //! You should have received a copy of the GNU Affero General Public License
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-#![allow(unused_variables)]
-#![allow(unused_imports)]
-#![allow(unused_assignments)]
-#![allow(dead_code)]
+// Binary uses trait impls; required methods (LangRule, LanguageScanner) are not all called.
+#![allow(unused)]
 
 use clap::{Parser, Subcommand, ValueEnum};
 use std::path::Path;
+use std::sync::Arc;
+use rayon::prelude::*;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::fixer::diff::format_findings_report;
 use crate::fixer::apply_fix::FixRange;
 use crate::rules::security::all_security_rules;
 use crate::scanner::tree_sitter::parse;
-use crate::scanner::base::{LanguageScanner, LangRule, LangFinding};
+use crate::scanner::base::{LanguageScanner, LangRule};
 use crate::scanner::{JavaScriptScanner, TypeScriptScanner, GoScanner, JavaScanner, CSharpScanner, PhpScanner, RubyScanner, RustScanner};
+use crate::scanner::enterprise::EnterpriseScanner;
+use crate::scanner::TaintLangScanner;
 use crate::rules::Rule;
 use crate::sarif::writer::SarifBuilder;
 
@@ -38,6 +40,7 @@ mod rules;
 mod scanner;
 mod sarif;
 mod integrations;
+mod ai_analysis;
 
 // --------------------------------------------------------------------------
 // Output Format
@@ -64,6 +67,100 @@ impl std::fmt::Display for OutputFormat {
             OutputFormat::Html => write!(f, "html"),
         }
     }
+}
+
+// --------------------------------------------------------------------------
+// Work Item for Parallel Scanning
+// --------------------------------------------------------------------------
+
+struct WorkItem {
+    file_path: String,
+    code: String,
+    ext: String,
+}
+
+// --------------------------------------------------------------------------
+// Baseline Helpers
+// --------------------------------------------------------------------------
+
+fn compute_fingerprint(rule_id: &str, file_path: &str, line: usize) -> String {
+    use ahash::AHasher;
+    use std::hash::{Hash, Hasher};
+    let mut s = AHasher::default();
+    format!("{}:{}:{}", rule_id, file_path, line).hash(&mut s);
+    format!("{:016x}", s.finish())
+}
+
+fn get_file_hash(path: &Path) -> Option<String> {
+    let metadata = std::fs::metadata(path).ok()?;
+    let modified = metadata.modified().ok()?;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let modified_epoch = modified.duration_since(UNIX_EPOCH).ok()?.as_secs();
+    use ahash::AHasher;
+    use std::hash::{Hash, Hasher};
+    let mut s = AHasher::default();
+    path.to_string_lossy().hash(&mut s);
+    modified_epoch.hash(&mut s);
+    Some(format!("{:016x}", s.finish()))
+}
+
+fn load_incremental_cache(cache_dir: &Path) -> std::collections::HashMap<String, String> {
+    let cache_file = cache_dir.join("file_hashes.json");
+    if cache_file.exists() {
+        std::fs::read_to_string(&cache_file)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    } else {
+        std::collections::HashMap::new()
+    }
+}
+
+fn save_incremental_cache(cache_dir: &Path, cache: &std::collections::HashMap<String, String>) {
+    let cache_file = cache_dir.join("file_hashes.json");
+    if let Ok(json) = serde_json::to_string(cache) {
+        let _ = std::fs::write(&cache_file, json);
+    }
+}
+
+fn load_baseline(path: &str) -> std::collections::HashSet<String> {
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return std::collections::HashSet::new(),
+    };
+    match serde_json::from_str::<crate::sarif::BaselineReport>(&content) {
+        Ok(report) => report.findings.into_iter().map(|f| f.fingerprint).collect(),
+        Err(_) => std::collections::HashSet::new(),
+    }
+}
+
+fn write_baseline(path: &str, findings: &[&ScanResult], total_files: usize) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::sarif::{BaselineFinding, BaselineReport};
+    let fingerprint_map: Vec<_> = findings.iter().map(|r| {
+        let fp = compute_fingerprint(&r.rule_id, &r.file, r.line);
+        BaselineFinding {
+            rule_id: r.rule_id.clone(),
+            file_path: r.file.clone(),
+            line: r.line,
+            column: 0,
+            end_line: r.end_byte,
+            end_column: 0,
+            severity: r.severity.clone(),
+            message: r.problem.clone(),
+            fingerprint: fp,
+        }
+    }).collect();
+
+    let report = BaselineReport {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        generated_at: chrono_lite_now(),
+        total_files,
+        findings: fingerprint_map,
+    };
+
+    let json = serde_json::to_string_pretty(&report)?;
+    std::fs::write(path, json)?;
+    Ok(())
 }
 
 // --------------------------------------------------------------------------
@@ -182,6 +279,14 @@ enum Commands {
         #[arg(long)]
         baseline: Option<String>,
 
+        /// Enable incremental scanning (skip unchanged files)
+        #[arg(long)]
+        incremental: bool,
+
+        /// Enable AI-powered fix suggestions (requires API key)
+        #[arg(long)]
+        ai_fix: bool,
+
         /// Fail if severity threshold is met (exit code non-zero)
         #[arg(long)]
         fail_on: Option<SeverityThreshold>,
@@ -285,8 +390,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     match args.command {
-        Commands::Scan { paths, fix, output, exclude_paths, include_paths, rules, no_fix, fix_only, parallel, timeout, config, baseline, fail_on } => {
-            scan_paths(&paths, fix || !no_fix, output.as_deref(), &args.format, &args.severity, exclude_paths.as_deref(), include_paths.as_deref(), rules.as_deref(), fix_only, parallel, timeout, config.as_deref(), baseline.as_deref(), fail_on.as_ref())?;
+        Commands::Scan { paths, fix, output, exclude_paths, include_paths, rules, no_fix, fix_only, parallel, timeout, config, baseline, incremental, ai_fix, fail_on } => {
+            scan_paths(&paths, fix || !no_fix, output.as_deref(), &args.format, &args.severity, exclude_paths.as_deref(), fix_only, fail_on.as_ref(), parallel, baseline.as_deref(), incremental, ai_fix)?;
         }
         Commands::ListRules { category, language } => {
             list_rules(category.as_deref(), language.as_deref());
@@ -323,17 +428,15 @@ fn scan_paths(
     format: &OutputFormat,
     severity_threshold: &SeverityThreshold,
     exclude_paths: Option<&str>,
-    _include_paths: Option<&str>,
-    _rules_filter: Option<&str>,
     fix_only: bool,
-    parallel: usize,
-    _timeout: Option<usize>,
-    _config: Option<&str>,
-    _baseline: Option<&str>,
     fail_on: Option<&SeverityThreshold>,
+    parallel: usize,
+    baseline: Option<&str>,
+    incremental: bool,
+    ai_fix: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let rules = all_security_rules();
-    let _severity_level = severity_threshold.level();
+    let rules_arc = Arc::new(rules);
 
     // Initialize language scanners
     let js_scanner = JavaScriptScanner::new();
@@ -344,14 +447,23 @@ fn scan_paths(
     let php_scanner = PhpScanner::new();
     let ruby_scanner = RubyScanner::new();
     let rust_scanner = RustScanner::new();
+    let enterprise_scanner = EnterpriseScanner::new();
+    let taint_scanner = TaintLangScanner::new("python");
 
     // Parse exclude patterns
     let exclude_patterns: Vec<String> = exclude_paths
         .map(|s| s.split(',').map(|p| p.trim().to_string()).collect())
         .unwrap_or_default();
 
-    let mut all_results = Vec::new();
+    // Incremental scanning: load cache from .pyneat-cache/
+    let mut incremental_cache = if incremental {
+        load_incremental_cache(Path::new(".pyneat-cache"))
+    } else {
+        std::collections::HashMap::new()
+    };
 
+    // Phase 1: Collect all work items (sequential - fast WalkDir I/O)
+    let mut work_items: Vec<WorkItem> = Vec::new();
     for path_str in paths {
         let path = Path::new(path_str);
 
@@ -371,36 +483,96 @@ fn scan_paths(
                     continue;
                 }
 
-                let ext = entry_path.extension().and_then(|e| e.to_str()).unwrap_or("");
-                let code = std::fs::read_to_string(entry_path)?;
+                let ext = entry_path.extension().and_then(|e| e.to_str()).unwrap_or("").to_string();
                 let file_path = entry_path.to_string_lossy().to_string();
 
-                if ext == "py" {
-                    if let Ok(results) = scan_python_detailed(&code, &file_path, &rules) {
-                        all_results.extend(results);
-                    }
-                } else if let Some(scanner) = get_lang_scanner(ext, &js_scanner, &ts_scanner, &go_scanner, &java_scanner, &csharp_scanner, &php_scanner, &ruby_scanner, &rust_scanner) {
-                    if let Ok(results) = scan_language_detailed(&code, scanner, &file_path) {
-                        all_results.extend(results);
+                // Incremental: skip unchanged files
+                {
+                    if !incremental_cache.is_empty() {
+                        if let Some(cached_hash) = incremental_cache.get(&file_path) {
+                            if let Some(current_hash) = get_file_hash(entry_path) {
+                                if cached_hash == &current_hash {
+                                    continue; // Skip unchanged
+                                }
+                            }
+                        }
                     }
                 }
+
+                let code = match std::fs::read_to_string(entry_path) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+                // Track hash of scanned file
+                if let Some(h) = get_file_hash(entry_path) {
+                    incremental_cache.insert(file_path.clone(), h);
+                }
+                work_items.push(WorkItem { file_path, code, ext });
             }
         } else if path.is_file() {
-            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-            let code = std::fs::read_to_string(path)?;
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_string();
             let file_path = path.to_string_lossy().to_string();
 
-            if ext == "py" {
-                if let Ok(results) = scan_python_detailed(&code, &file_path, &rules) {
-                    all_results.extend(results);
-                }
-            } else if let Some(scanner) = get_lang_scanner(ext, &js_scanner, &ts_scanner, &go_scanner, &java_scanner, &csharp_scanner, &php_scanner, &ruby_scanner, &rust_scanner) {
-                if let Ok(results) = scan_language_detailed(&code, scanner, &file_path) {
-                    all_results.extend(results);
+            // Incremental: skip unchanged files
+            if !incremental_cache.is_empty() {
+                if let Some(cached_hash) = incremental_cache.get(&file_path) {
+                    if let Some(current_hash) = get_file_hash(path) {
+                        if cached_hash == &current_hash {
+                            continue; // Skip unchanged
+                        }
+                    }
                 }
             }
+
+            let code = match std::fs::read_to_string(path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            // Track hash of scanned file
+            if let Some(h) = get_file_hash(path) {
+                incremental_cache.insert(file_path.clone(), h);
+            }
+            work_items.push(WorkItem { file_path, code, ext });
         }
     }
+
+    // Phase 2: Scan all work items in parallel using rayon (chunk-based)
+    let chunk_size = (work_items.len() / parallel.max(1)).max(1);
+    let all_results: Vec<ScanResult> = work_items
+        .chunks(chunk_size)
+        .collect::<Vec<_>>()
+        .into_par_iter()
+        .flat_map(|chunk| {
+            let mut results = Vec::new();
+            for item in chunk {
+                if item.ext == "py" {
+                    if let Ok(r) = scan_python_detailed(&item.code, &item.file_path, &*rules_arc) {
+                        results.extend(r);
+                    }
+                }
+                if let Some(ts) = TaintLangScanner::for_extension(&item.ext) {
+                    if let Ok(r) = scan_language_detailed(&item.code, &ts, &item.file_path) {
+                        results.extend(r);
+                    }
+                }
+                if let Some(scanner) = get_lang_scanner(
+                    &item.ext, &js_scanner, &ts_scanner, &go_scanner, &java_scanner,
+                    &csharp_scanner, &php_scanner, &ruby_scanner, &rust_scanner,
+                ) {
+                    if let Ok(r) = scan_language_detailed(&item.code, scanner, &item.file_path) {
+                        results.extend(r);
+                    }
+                }
+                if let Ok(r) = scan_language_detailed(&item.code, &enterprise_scanner, &item.file_path) {
+                    results.extend(r);
+                }
+            }
+            results
+        })
+        .collect();
+
+    // Deduplicate cross-scanner findings: keep highest-severity per (file, line, rule_id)
+    let all_results = deduplicate_findings(all_results);
 
     // Apply auto-fixes if requested
     if apply_fix {
@@ -408,7 +580,7 @@ fn scan_paths(
         for result in &all_results {
             if result.auto_fix {
                 let file_fixes_list = file_fixes.entry(result.file.clone()).or_default();
-                for rule in &rules {
+                for rule in &*rules_arc {
                     if rule.id() == result.rule_id {
                         let code = std::fs::read_to_string(&Path::new(&result.file)).unwrap_or_default();
                         let finding = crate::rules::base::Finding {
@@ -457,16 +629,46 @@ fn scan_paths(
         return Ok(());
     }
 
-    // Filter by severity
-    let threshold_level = severity_threshold.level();
-    let filtered: Vec<_> = all_results.iter()
-        .filter(|r| severity_level(&r.severity) >= threshold_level)
-        .collect();
+    // Baseline support: if --baseline <path> provided, generate baseline or diff
+    let filtered: Vec<&ScanResult> = if let Some(baseline_path) = baseline {
+        let threshold_level = severity_threshold.level();
+        if Path::new(baseline_path).exists() {
+            // Load baseline and filter out known findings
+            let baseline_fps = load_baseline(baseline_path);
+            all_results.iter()
+                .filter(|r| !baseline_fps.contains(&compute_fingerprint(&r.rule_id, &r.file, r.line)))
+                .filter(|r| severity_level(&r.severity) >= threshold_level)
+                .filter(|r| {
+                    if let Some(threshold) = fail_on {
+                        severity_level(&r.severity) >= threshold.level()
+                    } else {
+                        true
+                    }
+                })
+                .collect()
+        } else {
+            // Baseline file doesn't exist yet -- generate it
+            let results: Vec<&ScanResult> = all_results.iter()
+                .filter(|r| severity_level(&r.severity) >= threshold_level)
+                .collect();
+            if let Err(e) = write_baseline(baseline_path, &results[..], paths.len()) {
+                eprintln!("Warning: failed to write baseline: {}", e);
+            } else {
+                println!("Baseline written to: {}", baseline_path);
+            }
+            results
+        }
+    } else {
+        // Filter by severity (original behavior)
+        all_results.iter()
+            .filter(|r| severity_level(&r.severity) >= severity_threshold.level())
+            .collect()
+    };
 
     // Output in the requested format
     let output_content = match format {
         OutputFormat::Sarif => {
-            serde_json::to_string_pretty(&generate_sarif_output(&filtered)).unwrap_or_default()
+            serde_json::to_string_pretty(&generate_sarif_output(&filtered, false)).unwrap_or_default()
         }
         OutputFormat::Json => {
             serde_json::to_string_pretty(&filtered).unwrap_or_default()
@@ -484,6 +686,11 @@ fn scan_paths(
             format_text_output(&filtered)
         }
     };
+
+    // Save incremental cache after successful scan
+    if incremental {
+        save_incremental_cache(Path::new(".pyneat-cache"), &incremental_cache);
+    }
 
     if let Some(output_file) = output {
         std::fs::write(output_file, &output_content)?;
@@ -505,11 +712,11 @@ fn scan_paths(
 
 fn severity_level(severity: &str) -> usize {
     match severity.to_lowercase().as_str() {
-        "critical" => 5,
-        "high" => 4,
-        "medium" => 3,
+        "critical" | "crit" => 5,
+        "high" | "error" => 4,
+        "medium" | "warn" | "warning" => 3,
         "low" => 2,
-        "info" => 1,
+        "info" | "note" | "hint" => 1,
         _ => 0,
     }
 }
@@ -524,29 +731,64 @@ fn scan_python_detailed(
         Err(_) => return Ok(vec![]),
     };
 
-    let mut results = Vec::new();
-    for rule in rules {
-        for finding in rule.detect(&tree, code) {
-            results.push(ScanResult {
-                rule_id: finding.rule_id.clone(),
-                severity: finding.severity.clone(),
-                file: filename.to_string(),
-                line: byte_offset_to_line(code, finding.start),
-                column: 1,
-                start_byte: finding.start,
-                end_byte: finding.end,
-                snippet: finding.snippet.clone(),
-                problem: finding.problem.clone(),
-                fix_hint: finding.fix_hint.clone(),
-                cwe_id: finding.cwe_id.clone(),
-                owasp_id: finding.owasp_id.clone(),
-                cvss_score: finding.cvss_score,
-                auto_fix: finding.auto_fix_available,
-            });
+    let results: Vec<ScanResult> = rules
+        .par_iter()
+        .filter(|rule| {
+            rule.supported_languages()
+                .map(|l| l.contains(&"python"))
+                .unwrap_or(true)
+        })
+        .flat_map(|rule| {
+            rule.detect(&tree, code)
+                .into_iter()
+                .map(|finding| ScanResult {
+                    rule_id: finding.rule_id.clone(),
+                    severity: finding.severity.clone(),
+                    file: filename.to_string(),
+                    line: byte_offset_to_line(code, finding.start),
+                    column: 1,
+                    start_byte: finding.start,
+                    end_byte: finding.end,
+                    snippet: finding.snippet.clone(),
+                    problem: finding.problem.clone(),
+                    fix_hint: finding.fix_hint.clone(),
+                    cwe_id: finding.cwe_id.clone(),
+                    owasp_id: finding.owasp_id.clone(),
+                    cvss_score: finding.cvss_score,
+                    auto_fix: finding.auto_fix_available,
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    Ok(results)
+}
+
+fn deduplicate_findings(results: Vec<ScanResult>) -> Vec<ScanResult> {
+    use std::collections::HashMap;
+
+    fn severity_rank(sev: &str) -> i32 {
+        match sev.to_lowercase().as_str() {
+            "critical" => 5,
+            "high" => 4,
+            "medium" | "moderate" => 3,
+            "low" => 2,
+            "info" | "informational" => 1,
+            _ => 0,
         }
     }
 
-    Ok(results)
+    let mut best: HashMap<(String, usize, String), ScanResult> = HashMap::new();
+    for r in results {
+        let key = (r.file.clone(), r.line, r.rule_id.clone());
+        let entry = best.entry(key).or_insert_with(|| r.clone());
+        if severity_rank(&r.severity) > severity_rank(&entry.severity) {
+            *entry = r;
+        }
+    }
+    let mut deduped: Vec<ScanResult> = best.into_values().collect();
+    deduped.sort_by_key(|r| (r.file.clone(), r.line));
+    deduped
 }
 
 fn scan_language_detailed(
@@ -616,12 +858,19 @@ fn byte_offset_to_line(code: &str, byte_offset: usize) -> usize {
     line
 }
 
-fn generate_sarif_output(results: &[&ScanResult]) -> serde_json::Value {
+fn generate_sarif_output(results: &[&ScanResult], ai_fix: bool) -> serde_json::Value {
     let mut builder = SarifBuilder::new(
         "PyNEAT",
         env!("CARGO_PKG_VERSION"),
         "https://github.com/pyneat/pyneat",
     );
+
+    // Optionally enrich with AI-suggested fixes
+    let llm_analyzer = if ai_fix && crate::ai_analysis::has_api_key() {
+        Some(crate::ai_analysis::LlmAnalyzer::new("", None, None))
+    } else {
+        None
+    };
 
     for result in results {
         let code = std::fs::read_to_string(&result.file).unwrap_or_default();
@@ -647,6 +896,40 @@ fn generate_sarif_output(results: &[&ScanResult]) -> serde_json::Value {
             Some(&result.snippet),
             Some(&result.fix_hint),
         );
+
+        // Add AI-suggested fix data if enabled
+        if let Some(ref analyzer) = llm_analyzer {
+            if result.severity == "critical" || result.severity == "high" {
+                let context = format!(
+                    "Rule: {} | Severity: {} | CWE: {:?} | File: {}",
+                    result.rule_id,
+                    result.severity,
+                    result.cwe_id,
+                    result.file
+                );
+                let rt = match tokio::runtime::Runtime::new() {
+                    Ok(r) => r,
+                    Err(_) => continue,
+                };
+                if let Ok(llm_result) = rt.block_on(analyzer.analyze(&result.snippet, &context)) {
+                    sarif_result = sarif_result.with_ai_fix(
+                        Some(llm_result.confidence),
+                        llm_result.attack_scenario.as_deref(),
+                        llm_result.references,
+                    );
+                    if let Some(fix) = llm_result.suggested_fix {
+                        let new_hint = format!("{} | AI Fix: {}", result.fix_hint, fix);
+                        sarif_result = sarif_result.with_properties(
+                            result.cwe_id.as_deref(),
+                            result.owasp_id.as_ref().map(|v| vec![v.as_str()]),
+                            result.cvss_score,
+                            Some(&result.snippet),
+                            Some(&new_hint),
+                        );
+                    }
+                }
+            }
+        }
 
         builder = builder.add_result(sarif_result);
     }
@@ -836,9 +1119,32 @@ fn chrono_lite_now() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    format!("1970-01-01T00:00:00Z")
+        .unwrap();
+    let secs = now.as_secs();
+    let days = secs / 86400;
+    let remaining = secs % 86400;
+    let hours = remaining / 3600;
+    let mins = (remaining % 3600) / 60;
+    let seconds = remaining % 60;
+    let year = 1970 + days / 365;
+    let day_of_year = days % 365;
+    let is_leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+    let month_days: [u64; 12] = if is_leap {
+        [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    } else {
+        [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    };
+    let mut month = 1;
+    let mut day_rem = day_of_year;
+    for (i, &md) in month_days.iter().enumerate() {
+        if day_rem < md {
+            month = i + 1;
+            break;
+        }
+        day_rem -= md;
+    }
+    let day = day_rem + 1;
+    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", year, month, day, hours, mins, seconds)
 }
 
 // --------------------------------------------------------------------------
@@ -874,7 +1180,18 @@ fn check_code(code: &str, override_format: &OutputFormat) -> Result<(), Box<dyn 
     let tree = parse(code)?;
     let mut findings: Vec<_> = Vec::new();
 
+    // Check if code looks like PHP
+    let is_php = code.contains("<?php") || code.contains("<?=") || code.starts_with("#!/usr/bin/php");
+
     for rule in &rules {
+        // Filter PHP-specific rules when code is not PHP
+        if !is_php {
+            if let Some(supported) = rule.supported_languages() {
+                if supported.contains(&"php") {
+                    continue;
+                }
+            }
+        }
         findings.extend(rule.detect(&tree, code));
     }
 
@@ -913,7 +1230,7 @@ fn check_code(code: &str, override_format: &OutputFormat) -> Result<(), Box<dyn 
     Ok(())
 }
 
-fn list_rules(category: Option<&str>, language: Option<&str>) {
+fn list_rules(_category: Option<&str>, _language: Option<&str>) {
     let rules = all_security_rules();
 
     println!("Available Security Rules (Python)");
@@ -1027,11 +1344,24 @@ fn upload_results(
             let token_str = token.as_deref().unwrap_or_default();
             let owner = owner.ok_or("GitHub owner is required")?;
             let repo = repo.ok_or("GitHub repo is required")?;
-            let _config = crate::integrations::github::GitHubConfig::new(&owner, &repo)
+            let config = crate::integrations::github::GitHubConfig::new(&owner, &repo)
                 .with_token(token_str);
 
             println!("Uploading SARIF to GitHub: {}/{}", owner, repo);
-            println!("Note: Async upload requires tokio runtime - run with `cargo run --release -- upload --file {} --provider github --owner {} --repo {}`", file, owner, repo);
+
+            let rt = tokio::runtime::Runtime::new()?;
+            let result = rt.block_on(config.upload_sarif(&content, category));
+            match result {
+                Ok(resp) => {
+                    println!("SARIF upload successful. ID: {}", resp.id);
+                    if let Some(url) = resp.upload_url {
+                        println!("Check status at: {}", url);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("SARIF upload failed: {}", e);
+                }
+            }
         }
         UploadProvider::GitLab => {
             println!("GitLab upload: Create .gitlab/merge-request-pyneat.yml for GitLab CI integration.");
@@ -1059,13 +1389,11 @@ fn ci_mode(paths: &[String], output: Option<&str>) -> Result<(), Box<dyn std::er
         &OutputFormat::Sarif,
         &SeverityThreshold::Info,
         None,
-        None,
-        None,
         false,
+        Some(&SeverityThreshold::High),
         8,
         None,
-        None,
-        None,
-        Some(&SeverityThreshold::High),
+        false,
+        false,
     )
 }

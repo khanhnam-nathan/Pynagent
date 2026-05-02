@@ -14,6 +14,7 @@ pub struct SarifBuilder {
     tool_uri: String,
     rules: Vec<SarifRule>,
     results: Vec<SarifResult>,
+    #[allow(dead_code)]
     rule_index_map: HashMap<String, usize>,
 }
 
@@ -30,6 +31,7 @@ impl SarifBuilder {
     }
 
     /// Add a rule to the SARIF report.
+    #[allow(dead_code)]
     pub fn add_rule(
         mut self,
         rule_id: &str,
@@ -57,6 +59,7 @@ impl SarifBuilder {
     }
 
     /// Add a Python Finding as a SARIF result.
+    #[allow(dead_code)]
     pub fn add_python_finding(
         mut self,
         finding: &Finding,
@@ -94,6 +97,7 @@ impl SarifBuilder {
     }
 
     /// Add a LangFinding (multi-language finding) as a SARIF result.
+    #[allow(dead_code)]
     pub fn add_lang_finding(
         mut self,
         finding: &LangFinding,
@@ -164,6 +168,7 @@ impl SarifBuilder {
 }
 
 /// Convert byte offset to (line, column) in source code.
+#[allow(dead_code)]
 fn byte_offset_to_line_column(code: &str, byte_offset: usize) -> (usize, usize) {
     let mut line = 1;
     let mut column = 1;
@@ -186,6 +191,7 @@ fn byte_offset_to_line_column(code: &str, byte_offset: usize) -> (usize, usize) 
 }
 
 /// Convenience function to create a SARIF report from findings.
+#[allow(dead_code)]
 pub fn create_sarif_report(
     tool_name: &str,
     tool_version: &str,

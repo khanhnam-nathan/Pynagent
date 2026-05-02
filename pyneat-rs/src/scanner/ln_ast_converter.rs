@@ -6,12 +6,12 @@
 
 use crate::scanner::ln_ast::{
     LnAssignment, LnAst, LnCall, LnCatchBlock, LnClass, LnComment, LnDeepNesting,
-    LnFunction, LnImport, LnString, LnTodo, TODO_MARKERS,
+    LnFunction, LnIdentifier, LnImport, LnString, LnTodo, TODO_MARKERS,
 };
 use crate::scanner::tree_sitter::{walk_tree, NodeInfo};
 use tree_sitter::Tree;
-use std::collections::HashSet;
 
+#[allow(dead_code)]
 const LANGUAGES: &[&str] = &[
     "python", "javascript", "typescript", "java",
     "go", "rust", "csharp", "php", "ruby",
@@ -46,6 +46,7 @@ impl LnAstConverter {
         let mut todos = Vec::new();
         let mut assignments = Vec::new();
         let mut deep_nesting = Vec::new();
+        let mut identifiers = Vec::new();
         let mut nesting_depth = 0usize;
 
         walk_tree(tree, code, |info| {
@@ -133,6 +134,21 @@ impl LnAstConverter {
                 if let Some(a) = self.extract_assignment(&info) {
                     assignments.push(a);
                 }
+                // Also extract identifiers from assignments
+                identifiers.extend(self.extract_identifiers_from_assignment(&info));
+            }
+
+            // Extract identifier references (variable names used in expressions)
+            if matches!(
+                kind,
+                "identifier"
+                    | "attribute"
+                    | "member_expression"
+                    | "shorthand_property_identifier"
+            ) {
+                if let Some(id) = self.extract_identifier(&info, kind) {
+                    identifiers.push(id);
+                }
             }
 
             if kind == "comment" || kind == "block_comment" {
@@ -161,7 +177,7 @@ impl LnAstConverter {
             }
         });
 
-        let source_hash = format!("{:x}", md5_hash(code));
+        let source_hash = format!("{:016x}", source_rolling_hash(code));
 
         LnAst {
             language: self.language.clone(),
@@ -176,6 +192,7 @@ impl LnAstConverter {
             catch_blocks,
             todos,
             deep_nesting,
+            identifiers,
         }
     }
 
@@ -248,11 +265,12 @@ impl LnAstConverter {
     fn extract_call(&self, info: &NodeInfo) -> Option<LnCall> {
         let text = info.text();
         let callee = extract_callee(text);
+        let arguments = extract_call_arguments(text);
         Some(LnCall {
             callee,
             start_line: info.start_line(),
             end_line: info.end_line(),
-            arguments: Vec::new(),
+            arguments,
         })
     }
 
@@ -317,6 +335,52 @@ impl LnAstConverter {
             start_line: info.start_line(),
             end_line: info.end_line(),
         })
+    }
+
+    fn extract_identifier(&self, info: &NodeInfo, kind: &str) -> Option<LnIdentifier> {
+        let text = info.text();
+        // Skip keywords and builtins
+        let keywords = ["if", "else", "for", "while", "return", "def", "class", "import",
+                       "True", "False", "None", "self", "this", "function", "const", "let", "var",
+                       "async", "await", "yield", "from", "as", "try", "except", "catch"];
+        if keywords.contains(&text) {
+            return None;
+        }
+        // Skip numeric literals
+        if text.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+            return None;
+        }
+        Some(LnIdentifier {
+            name: text.to_string(),
+            start_line: info.start_line(),
+            end_line: info.end_line(),
+            start_byte: info.start_byte,
+            end_byte: info.end_byte,
+            is_definition: kind == "identifier" && text == text, // simplified
+        })
+    }
+
+    fn extract_identifiers_from_assignment(&self, info: &NodeInfo) -> Vec<LnIdentifier> {
+        let text = info.text();
+        let mut ids = Vec::new();
+        // Extract the left-hand side identifier
+        if let Some(eq_pos) = text.find('=') {
+            let lhs = text[..eq_pos].trim();
+            // Remove type annotations and other cruft
+            let name = lhs.split(':').next().unwrap_or(lhs)
+                .split_whitespace().last().unwrap_or(lhs).to_string();
+            if !name.is_empty() && !name.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+                ids.push(LnIdentifier {
+                    name,
+                    start_line: info.start_line(),
+                    end_line: info.start_line(),
+                    start_byte: info.start_byte,
+                    end_byte: info.start_byte + lhs.len(),
+                    is_definition: true,
+                });
+            }
+        }
+        ids
     }
 }
 
@@ -548,6 +612,83 @@ fn extract_callee(text: &str) -> String {
         .to_string()
 }
 
+/// Extract call arguments as a list of argument text strings.
+///
+/// Handles nested parentheses to correctly parse arguments in:
+/// - Python: `func(arg1, arg2, func2(nested))`
+/// - JavaScript: `obj.method(a, b)`
+/// - Java: `obj.method(a, b)`
+fn extract_call_arguments(text: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut paren_depth = 0;
+    let mut arg_start: Option<usize> = None;
+
+    for (i, c) in text.char_indices() {
+        match c {
+            '(' => {
+                if paren_depth == 0 {
+                    arg_start = Some(i + 1);
+                }
+                paren_depth += 1;
+            }
+            ')' => {
+                paren_depth -= 1;
+                if paren_depth == 0 {
+                    if let Some(start) = arg_start {
+                        let arg = text[start..i].trim();
+                        if !arg.is_empty() {
+                            args.extend(split_arguments(arg));
+                        }
+                    }
+                    break;
+                }
+            }
+            ',' if paren_depth == 1 => {
+                if let Some(start) = arg_start {
+                    let arg = text[start..i].trim();
+                    if !arg.is_empty() {
+                        args.push(arg.to_string());
+                    }
+                }
+                arg_start = Some(i + 1);
+            }
+            _ => {}
+        }
+    }
+
+    args
+}
+
+/// Split a comma-separated list of arguments, respecting nested brackets.
+fn split_arguments(text: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut depth: usize = 0;
+    let mut start = 0;
+
+    for (i, c) in text.char_indices() {
+        match c {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                let arg = text[start..i].trim();
+                if !arg.is_empty() {
+                    args.push(arg.to_string());
+                }
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+
+    // Last argument
+    let last = text[start..].trim();
+    if !last.is_empty() {
+        args.push(last.to_string());
+    }
+
+    args
+}
+
 fn extract_assignment_info(language: &str, text: &str) -> (String, Option<String>) {
     if language == "python" {
         if let Some(pos) = text.find('=') {
@@ -569,7 +710,9 @@ fn extract_assignment_info(language: &str, text: &str) -> (String, Option<String
     (String::new(), None)
 }
 
-fn md5_hash(text: &str) -> u128 {
+/// Simple position-weighted rolling hash (not cryptographic).
+/// Used for LnAst source hash for cache key validation, not for security purposes.
+fn source_rolling_hash(text: &str) -> u128 {
     let mut hash: u128 = 0;
     for (i, byte) in text.bytes().enumerate() {
         hash = hash.wrapping_add((byte as u128).wrapping_mul(i as u128 + 1));
