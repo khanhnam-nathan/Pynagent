@@ -16,11 +16,14 @@
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 
+#[allow(dead_code)]
+
 use tree_sitter::Parser;
 
 /// Apply a single fix to the code.
 ///
 /// Returns the modified code, or None if the fix could not be applied.
+#[allow(dead_code)]
 pub fn apply_fix_code(code: &str, start: usize, end: usize, replacement: &str) -> Option<String> {
     if start > end || end > code.len() {
         return None;
@@ -67,6 +70,7 @@ pub fn apply_multiple_fixes(code: &str, fixes: &[FixRange]) -> String {
 
 /// Result of applying fixes with conflict information.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct FixResult {
     pub code: String,
     pub applied: Vec<String>,

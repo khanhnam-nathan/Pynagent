@@ -24,7 +24,7 @@ jobs:
         run: pip install pyneat
 
       - name: Run security scan
-        run: pyneat check . --format sarif --output results.sarif
+        run: pyneat check . -f sarif -o results.sarif
 
       - name: Upload results to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
@@ -72,8 +72,8 @@ jobs:
       - name: Run PyNeat scan
         run: |
           pyneat check . \
-            --format sarif \
-            --output pyneat-results.sarif \
+            -f sarif \
+            -o pyneat-results.sarif \
             --fail-on critical
 
       - name: Upload SARIF to GitHub
@@ -182,7 +182,7 @@ jobs:
         run: pip install pyneat
 
       - name: Run scan
-        run: pyneat check . --format sarif --output scan.sarif
+        run: pyneat check . -f sarif -o scan.sarif
 
       - name: Upload results
         uses: github/codeql-action/upload-sarif@v3
@@ -233,8 +233,8 @@ jobs:
         run: |
           pyneat check . \
             --lang ${{ matrix.language }} \
-            --format sarif \
-            --output results-${{ matrix.language }}.sarif
+            -f sarif \
+            -o results-${{ matrix.language }}.sarif
 
       - name: Upload ${{ matrix.language }} results
         uses: github/codeql-action/upload-sarif@v3
@@ -270,7 +270,9 @@ jobs:
         run: pip install -e .
 
       - name: Run benchmarks
-        run: python pyneat/benchmark.py --iterations 10
+        run: |
+          cd pyneat-rs
+          python benchmark.py --files 200 --iterations 5
 
       - name: Upload results
         uses: actions/upload-artifact@v4
@@ -313,7 +315,7 @@ jobs:
 
 ## GitLab SAST Export
 
-For GitLab CI integration:
+For GitLab CI integration, use the SARIF format which GitLab SAST natively supports:
 
 ```yaml
 # .gitlab-ci.yml
@@ -322,10 +324,18 @@ pyneat-sast:
   before_script:
     - pip install pyneat
   script:
-    - pyneat check . --format gitlab-sast --output gl-sast-report.json
+    - pyneat report . -f sarif -o gl-sast-report.sarif
   artifacts:
     reports:
-      sast: gl-sast-report.json
+      sast: gl-sast-report.sarif
+```
+
+Alternatively, export directly via Python API for full control:
+
+```python
+from pyneat.core.manifest import export_to_gitlab_sast
+
+gitlab = export_to_gitlab_sast(markers, project="my-project")
 ```
 
 ## SonarQube Integration

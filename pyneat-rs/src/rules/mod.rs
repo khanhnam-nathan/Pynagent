@@ -57,9 +57,10 @@ pub mod config;
 // Extended security rules (SEC-073 to SEC-105+) in extended_security.rs
 pub mod extended_security;
 
-// Hackingtool-inspired security rules (SEC-118 to SEC-125)
+// Hackingtool-inspired security rules (SEC-118 to SEC-141)
 // Detects patterns from offensive security tools: phishing, rogue AP,
-// backdoors, C2, surveillance, credential attacks, MITM
+// backdoors, C2, surveillance, credential attacks, MITM, SQLi, web scanners,
+// forensics, steganography, AD/cloud attacks, mobile, DDoS, exploit frameworks
 pub mod hackingtool_patterns;
 
 // AST-based security rules (semantic analysis on tree-sitter AST)

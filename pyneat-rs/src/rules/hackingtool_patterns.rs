@@ -379,6 +379,506 @@ impl Rule for NetworkSniffingRule {
     fn supports_auto_fix(&self) -> bool { false }
 }
 
+// ---------------------------------------------------------------------------
+// SQL Injection Attack Patterns (SEC-132)
+// ---------------------------------------------------------------------------
+
+static SEC132_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"(?i)(?:sqlmap\s+-u|sqlmap\s+--url|sqlmap\s+--batch|sqlmap\s+-r\s)"##, "SQLmap automated SQL injection scanner"),
+    (r##"(?i)(?:sqlmap\s+--dbs|sqlmap\s+--tables|sqlmap\s+--columns|sqlmap\s+--dump)"##, "SQLmap database enumeration commands"),
+    (r##"(?i)(?:sqlmap\s+--risk|sqlmap\s+--level|sqlmap\s+--threads|sqlmap\s+--tamper)"##, "SQLmap advanced injection options"),
+    (r##"(?i)(?:nosqlmap\s+|--options|nosqlmap\s+-v|nosqlmap\s+--mongo)"##, "NoSQLMap NoSQL injection scanner"),
+    (r##"(?i)(?:dsss\s+--url|dsss\s+-u\s|dsss\s+--data)"##, "DSSS (Damn Small SQLi) scanner"),
+    (r##"(?i)(?: Leviathan|leviathan.*scan|leviathan.*exploit)"##, "Leviathan offensive security framework"),
+    (r##"(?i)(?:sqlscan|sqlscan\.py|sqlscan\s+-t)"##, "SQLScan vulnerability scanner"),
+    (r##"(?i)(?:SLEEP\s*\(|BENCHMARK\s*\(|WAITFOR\s+DELAY)"##, "Blind/time-based SQL injection payload"),
+    (r##"(?i)(?:(?:union\s+select|UNION\s+ALL\s+SELECT).*(?:from|where))"##, "Union-based SQL injection payload"),
+    (r##"(?i)(?:'\s+OR\s+'1'\s*=\s*'1|\"\s+OR\s+\"1\"\s*=\s*\"1|OR\s+1\s*=\s*1\s*--)"##, "Classic OR SQL injection bypass"),
+]);
+
+pub struct SqlInjectionAttackRule;
+impl Rule for SqlInjectionAttackRule {
+    fn id(&self) -> &str { "SEC-132" }
+    fn name(&self) -> &str { "SQL Injection Attack Patterns" }
+    fn severity(&self) -> Severity { Severity::Critical }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["python", "bash", "shell", "php", "javascript"]) }
+    fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for (pattern, problem) in SEC132_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let snippet = extract_snippet(code, m.start(), m.end());
+                    findings.push(Finding {
+                        rule_id: "SEC-132".to_string(),
+                        severity: Severity::Critical.as_str().to_string(),
+                        cwe_id: Some("CWE-89".to_string()),
+                        cvss_score: Some(9.8),
+                        owasp_id: Some("A03:2021".to_string()),
+                        start: m.start(), end: m.end(), snippet,
+                        problem: problem.to_string(),
+                        fix_hint: "SQL injection tools indicate database attack attempts. Use parameterized queries, ORM, and input validation.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings.sort_by_key(|f| f.start);
+        findings
+    }
+    fn fix(&self, _: &Finding, _: &str) -> Option<Fix> { None }
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ---------------------------------------------------------------------------
+// Web Vulnerability Scanner Patterns (SEC-133)
+// ---------------------------------------------------------------------------
+
+static SEC133_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"(?i)(?:nuclei\s+-u|nuclei\s+--target|nuclei\s+-l\s|nuclei\s+--list)"##, "Nuclei vulnerability scanner invocation"),
+    (r##"(?i)(?:nuclei\s+-t\s|nuclei\s+--templates|nuclei\s+-tags|nuclei\s+-severity)"##, "Nuclei template-based scanning"),
+    (r##"(?i)(?:nikto\s+-h\s|nikto\s+--host|nikto\s+-C\s|nikto\s+--tuning)"##, "Nikto web server scanner"),
+    (r##"(?i)(?:gobuster\s+dir|gobuster\s+dns|gobuster\s+vhost|gobuster\s+-u\s)"##, "Gobuster directory/file enumeration"),
+    (r##"(?i)(?:ffuf\s+-w\s|ffuf\s+-u\s|ffuf\s+-fc\s|ffuf\s+-mc\s)"##, "ffuf web fuzzing tool"),
+    (r##"(?i)(?:dirb\s+http|dirsearch\s+-u\s|feroxbuster\s+-u\s|dirb\s+-o\s)"##, "Directory enumeration tools"),
+    (r##"(?i)(?:wafw00f\s+|wafw00f\s+-a|wafw00f\s+--findall)"##, "WAF detection via wafw00f"),
+    (r##"(?i)(?:sublist3r\s+-d\s|sublist3r\s+-b\s|subjack\s+-w\s)"##, "Subdomain enumeration and takeover"),
+    (r##"(?i)(?:testssl\.sh|testssl\.sh\s+--fast|testssl\.sh\s+--琴)"##, "SSL/TLS testing with testssl.sh"),
+    (r##"(?i)(?:arjun\s+-u\s|arjun\s+--urls|arjun\s+-m\s)"##, "Arjun HTTP parameter discovery"),
+    (r##"(?i)(?:nmap\s+--script\s+(?:http|vuln|http-enum|http-)"##, "Nmap HTTP vulnerability scripts"),
+    (r##"(?i)(?:skipfish\s+-o\s|skipfish\s+-S\s|skipfish\s+-I\s)"##, "Skipfish web application scanner"),
+    (r##"(?i)(?:OWASP.*ZAP|owasp.*zap|zaproxy| zap-cli)"##, "OWASP ZAP active scanner"),
+    (r##"(?i)(?:gospider\s+-s\s|gospider\s+-w\s|gospider\s+-r\s)"##, "Gospider web crawler"),
+]);
+
+pub struct WebVulnScannerRule;
+impl Rule for WebVulnScannerRule {
+    fn id(&self) -> &str { "SEC-133" }
+    fn name(&self) -> &str { "Web Vulnerability Scanner Patterns" }
+    fn severity(&self) -> Severity { Severity::High }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["python", "bash", "shell"]) }
+    fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for (pattern, problem) in SEC133_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let snippet = extract_snippet(code, m.start(), m.end());
+                    findings.push(Finding {
+                        rule_id: "SEC-133".to_string(),
+                        severity: Severity::High.as_str().to_string(),
+                        cwe_id: Some("CWE-200".to_string()),
+                        cvss_score: Some(7.5),
+                        owasp_id: Some("A01:2021".to_string()),
+                        start: m.start(), end: m.end(), snippet,
+                        problem: problem.to_string(),
+                        fix_hint: "Web vulnerability scanner tools detected. Ensure these are used in authorized security testing only.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings.sort_by_key(|f| f.start);
+        findings
+    }
+    fn fix(&self, _: &Finding, _: &str) -> Option<Fix> { None }
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ---------------------------------------------------------------------------
+// Forensics / Memory Analysis Patterns (SEC-134)
+// ---------------------------------------------------------------------------
+
+static SEC134_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"(?i)(?:volatility\s+-f\s|volatility\s+--profile|volatility\s+windows\.)"##, "Volatility memory forensics framework"),
+    (r##"(?i)(?:volatility\s+-Q\s|volatility\s+dump|volatility\s+pslist)"##, "Volatility process/memory extraction"),
+    (r##"(?i)(?:binwalk\s+-e\s|binwalk\s+--dd|binwalk\s+-M\s|binwalk\s+-r)"##, "Binwalk firmware/binaries extraction"),
+    (r##"(?i)(?:autopsy|autopsy\s+--琴| SleuthKit|tsk_getattr)"##, "Autopsy/SleuthKit forensic analysis"),
+    (r##"(?i)(?:bulk_extractor|bulk-extractor|bulkextractor)"##, "BulkExtractor digital forensics tool"),
+    (r##"(?i)(?:pspy|pspy64|pspy32|pspy\s+-p\s|pspy\s+-c\s)"##, "pspy process monitoring without root"),
+    (r##"(?i)(?:wireshark|tshark|tshark\s+-r\s|tshark\s+-Y\s)"##, "Wireshark/tshark packet analysis"),
+    (r##"(?i)(?:guymager|guymager\s+-d\s|affcopy|libewf)"##, "Guymager forensic imaging tool"),
+    (r##"(?i)(?:toolsley|toolsley\.py|forensic.*toolsley)"##, "Toolsley forensic utility suite"),
+]);
+
+pub struct ForensicsAnalysisRule;
+impl Rule for ForensicsAnalysisRule {
+    fn id(&self) -> &str { "SEC-134" }
+    fn name(&self) -> &str { "Forensics / Memory Analysis Patterns" }
+    fn severity(&self) -> Severity { Severity::Medium }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["python", "bash", "shell"]) }
+    fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for (pattern, problem) in SEC134_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let snippet = extract_snippet(code, m.start(), m.end());
+                    findings.push(Finding {
+                        rule_id: "SEC-134".to_string(),
+                        severity: Severity::Medium.as_str().to_string(),
+                        cwe_id: Some("CWE-200".to_string()),
+                        cvss_score: Some(5.3),
+                        owasp_id: Some("A01:2021".to_string()),
+                        start: m.start(), end: m.end(), snippet,
+                        problem: problem.to_string(),
+                        fix_hint: "Digital forensics tools detected. Ensure authorized use only for incident response or legitimate investigations.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings.sort_by_key(|f| f.start);
+        findings
+    }
+    fn fix(&self, _: &Finding, _: &str) -> Option<Fix> { None }
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ---------------------------------------------------------------------------
+// Steganography Patterns (SEC-135)
+// ---------------------------------------------------------------------------
+
+static SEC135_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"(?i)(?:steghide\s+extract|steghide\s+embed|steghide\s+-sf\s)"##, "Steghide steganography tool"),
+    (r##"(?i)(?:stegcracker|stegcrack|brute.*stego|john.*stego)"##, "Steganography brute-force cracking"),
+    (r##"(?i)(?:zsteg\s+|zsteg\s+-a\s|zsteg\s+-E\s)"##, "zsteg PNG/BMP steganography detection"),
+    (r##"(?i)(?:snow\s+|snow\s+-C\s|snow\s+-p\s)"##, "SNOW whitespace steganography"),
+    (r##"(?i)(?:pngcheck|pngcheck\s+-v|outguess|outguess\s+-r\s)"##, "PNG analysis and stego extraction"),
+    (r##"(?i)(?:stegano|stegano-lsb|stegano-lsb-set|openstego)"##, "OpenStego / LSB steganography"),
+    (r##"(?i)(?:stegosuite|stegosuite\s+-x|stegosuite\s+-e)"##, "StegoSuite steganography tool"),
+    (r##"(?i)(?:jsteg|jsteg\s+extract|jsteg\.py|hide.*data.*image)"##, "JSteg JPEG steganography"),
+    (r##"(?i)(?:stegoveritas|stegoveritas\.py|veritas.*stego)"##, "StegoVeritas comprehensive stego analysis"),
+]);
+
+pub struct SteganographyRule;
+impl Rule for SteganographyRule {
+    fn id(&self) -> &str { "SEC-135" }
+    fn name(&self) -> &str { "Steganography Patterns" }
+    fn severity(&self) -> Severity { Severity::Medium }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["python", "bash", "shell"]) }
+    fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for (pattern, problem) in SEC135_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let snippet = extract_snippet(code, m.start(), m.end());
+                    findings.push(Finding {
+                        rule_id: "SEC-135".to_string(),
+                        severity: Severity::Medium.as_str().to_string(),
+                        cwe_id: Some("CWE-200".to_string()),
+                        cvss_score: Some(5.3),
+                        owasp_id: Some("A01:2021".to_string()),
+                        start: m.start(), end: m.end(), snippet,
+                        problem: problem.to_string(),
+                        fix_hint: "Steganography tools detected. Review for data exfiltration or hidden malware payloads.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings.sort_by_key(|f| f.start);
+        findings
+    }
+    fn fix(&self, _: &Finding, _: &str) -> Option<Fix> { None }
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ---------------------------------------------------------------------------
+// Cloud Security / Active Directory Attack Patterns (SEC-136)
+// ---------------------------------------------------------------------------
+
+static SEC136_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"(?i)(?:bloodhound|bloodhound-ce|bloodhound\.py|bloodhound.*--琴)"##, "BloodHound AD enumeration tool"),
+    (r##"(?i)(?:bloodhound.*-c\s|bloodhound.*-CollectionMethod|bloodhound.*--gc)"##, "BloodHound data collection commands"),
+    (r##"(?i)(?:netexec|nxc\s+--pass-pol|nxc\s+--sam|nxc\s+-M\s+.*)"##, "NetExec (NetExec) lateral movement tool"),
+    (r##"(?i)(?:impacket|psexec\.py|smbexec\.py|wmiexec\.py|ntlmrelayx\.py)"##, "Impacket attack toolkit"),
+    (r##"(?i)(?:GetUserSPNs\.py|GetNPUsers\.py|kerberoast|kerberoasting)"##, "Kerberoasting attack pattern"),
+    (r##"(?i)(?:certipy|certipy-ad\s+find|certipy-ad\s+auth|certipy.*shadow)"##, "Certipy Active Directory certificate attack"),
+    (r##"(?i)(?:responder|responder\s+-I\s|responder\s+-rFv|LLMNR.*responder)"##, "Responder LLMNR/NBT-NS poisoner"),
+    (r##"(?i)(?:krbrelay|krbrelayx|mitm6|mitm6\s+-i\s)"##, "Kerberos relay attack (mitm6/krbrelay)"),
+    (r##"(?i)(?:enum4linux|enum4linux\.py|samrdump\.py)"##, "SMB/AD enumeration via enum4linux"),
+    (r##"(?i)(?:ldapsearch|ldapsearch\s+-H\s|ldapsearch\s+-D\s|ldapdomaindump)"##, "LDAP enumeration and domain dump"),
+    (r##"(?i)(?:secretsdump\.py|secretsdump|lsassy)"##, "Remote SAM/SECRETS dumping (Mimikatz alternative)"),
+    (r##"(?i)(?:wmiexec|wmiexec\.py|dcomexec\.py|atexec\.py)"##, "WMI/DCOM remote execution tools"),
+]);
+
+pub struct CloudADAttackRule;
+impl Rule for CloudADAttackRule {
+    fn id(&self) -> &str { "SEC-136" }
+    fn name(&self) -> &str { "Cloud Security / Active Directory Attack Patterns" }
+    fn severity(&self) -> Severity { Severity::Critical }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["python", "bash", "shell", "powershell"]) }
+    fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for (pattern, problem) in SEC136_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let snippet = extract_snippet(code, m.start(), m.end());
+                    findings.push(Finding {
+                        rule_id: "SEC-136".to_string(),
+                        severity: Severity::Critical.as_str().to_string(),
+                        cwe_id: Some("CWE-284".to_string()),
+                        cvss_score: Some(9.3),
+                        owasp_id: Some("A01:2021".to_string()),
+                        start: m.start(), end: m.end(), snippet,
+                        problem: problem.to_string(),
+                        fix_hint: "AD/cloud attack tools detected. Indicates potential lateral movement, privilege escalation, or credential theft.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings.sort_by_key(|f| f.start);
+        findings
+    }
+    fn fix(&self, _: &Finding, _: &str) -> Option<Fix> { None }
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ---------------------------------------------------------------------------
+// Mobile Security Patterns (SEC-137)
+// ---------------------------------------------------------------------------
+
+static SEC137_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"(?i)(?:frida\s+-U|frida\s+-f\s|frida\s+-l\s|frida-trace)"##, "Frida dynamic instrumentation toolkit"),
+    (r##"(?i)(?:frida.*-s\s|frida.*--enable-jit|frida.*hook|frida.*attach)"##, "Frida hooking/instrumentation patterns"),
+    (r##"(?i)(?:mobsf|mobile-security-framework|mobsfapi|MobSF.*scan)"##, "MobSF mobile security framework"),
+    (r##"(?i)(?:objection\s+-g\s|objection\s+explore|objection\s+ios\s)"##, "Objection mobile exploration tool"),
+    (r##"(?i)(?:apktool\s+d\s|apktool\s+b\s|apktool.*if\s|jadx.*\.apk)"##, "APK decompilation and analysis"),
+    (r##"(?i)(?:androguard|androguard\.py|Androguard.*decompile|dalvik.*analyze)"##, "Androguard Android analysis"),
+    (r##"(?i)(?:drozer|drozer.*exploit|drozer.*module|drozer.*shell)"##, "Drozer Android security testing"),
+    (r##"(?i)(?:qark\s+--source|qark\s+--apk|qark\s+--exploit)"##, "QARK Android vulnerability scanner"),
+    (r##"(?i)(?:pidcat|logcat.*vuln|adb\s+logcat.*sensitive)"##, "Android logcat sensitive data exposure"),
+    (r##"(?i)(?:xposed.*module|xposed.*hook|lsposed)"##, "Xposed/LSposed framework hooking"),
+]);
+
+pub struct MobileSecurityRule;
+impl Rule for MobileSecurityRule {
+    fn id(&self) -> &str { "SEC-137" }
+    fn name(&self) -> &str { "Mobile Security Patterns" }
+    fn severity(&self) -> Severity { Severity::High }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["python", "bash", "shell", "java"]) }
+    fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for (pattern, problem) in SEC137_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let snippet = extract_snippet(code, m.start(), m.end());
+                    findings.push(Finding {
+                        rule_id: "SEC-137".to_string(),
+                        severity: Severity::High.as_str().to_string(),
+                        cwe_id: Some("CWE-200".to_string()),
+                        cvss_score: Some(7.5),
+                        owasp_id: Some("A01:2021".to_string()),
+                        start: m.start(), end: m.end(), snippet,
+                        problem: problem.to_string(),
+                        fix_hint: "Mobile security testing tools detected. Ensure authorized testing on devices you own or have permission to test.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings.sort_by_key(|f| f.start);
+        findings
+    }
+    fn fix(&self, _: &Finding, _: &str) -> Option<Fix> { None }
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ---------------------------------------------------------------------------
+// DDOS Attack Patterns (SEC-138)
+// ---------------------------------------------------------------------------
+
+static SEC138_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"(?i)(?:slowloris|slowloris\.py|loworbit.*ion|slow.*http.*post)"##, "Slowloris DoS attack tool"),
+    (r##"(?i)(?:goldeneye|goldeneye\.py|goldeneye\s+-u\s|goldeneye\s+-m\s)"##, "GoldenEye DoS testing tool"),
+    (r##"(?i)(?:ufonet|ufonet\.py|ufonet\s+--target|ufonet\s+--botnet)"##, "UFONet DDoS tool"),
+    (r##"(?i)(?:asyncrone|asyncrone\.py|asyncrone\s+--target)"##, "Asyncrone DoS tool"),
+    (r##"(?i)(?:saphyra|saphyra\.py|hulk|hulk\.py|apache.*killer)"##, "HULK / Apache Killer DoS tool"),
+    (r##"(?i)(?:rudy|tor's hammer|r-u-dead-yet|rydos)"##, "R-U-Dead-Yet slow POST DoS"),
+    (r##"(?i)(?:xoic|xoic\.py|doser|doser\.py|ddos.*script)"##, "DDOS attack script patterns"),
+    (r##"(?i)(?:siege|siege\s+-c\s|siege\s+-t\s|apache-bench|ab\s+-n\s)"##, "HTTP stress testing (potential DoS)"),
+]);
+
+pub struct DDOSAttackRule;
+impl Rule for DDOSAttackRule {
+    fn id(&self) -> &str { "SEC-138" }
+    fn name(&self) -> &str { "DDOS Attack Patterns" }
+    fn severity(&self) -> Severity { Severity::Critical }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["python", "bash", "shell"]) }
+    fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for (pattern, problem) in SEC138_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let snippet = extract_snippet(code, m.start(), m.end());
+                    findings.push(Finding {
+                        rule_id: "SEC-138".to_string(),
+                        severity: Severity::Critical.as_str().to_string(),
+                        cwe_id: Some("CWE-400".to_string()),
+                        cvss_score: Some(8.6),
+                        owasp_id: Some("A01:2021".to_string()),
+                        start: m.start(), end: m.end(), snippet,
+                        problem: problem.to_string(),
+                        fix_hint: "DDoS/DoS tools detected. Ensure rate limiting, CDN protection, and WAF in production. Only authorized testing.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings.sort_by_key(|f| f.start);
+        findings
+    }
+    fn fix(&self, _: &Finding, _: &str) -> Option<Fix> { None }
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ---------------------------------------------------------------------------
+// Exploit Framework Patterns (SEC-139)
+// ---------------------------------------------------------------------------
+
+static SEC139_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"(?i)(?:rsf\.py|rsploit|router.*exploit|router?sploit)"##, "RouterSploit framework"),
+    (r##"(?i)(?:wsf\.py|websploit|websploit\s+use\s|websploit\s+set\s)"##, "WebSploit framework"),
+    (r##"(?i)(?:commix|commix\.py|commix\s+--url|commix\s+--wizard)"##, "Commix command injection exploit tool"),
+    (r##"(?i)(?:msfconsole|msfvenom|metasploit|msf.*use\s|msf.*exploit)"##, "Metasploit framework"),
+    (r##"(?i)(?:msfvenom\s+-p\s|msfvenom\s+--payload|msfvenom\s+--format)"##, "MSFVenom payload generation"),
+    (r##"(?i)(?:searchsploit|exploitdb|exploit-db|searchsploit\s+-s\s)"##, "Exploit-DB / searchsploit"),
+    (r##"(?i)(?:searchsploit\s+-c\s|searchsploit\s+-m\s|searchsploit\s+-e\s)"##, "Exploit-DB search and clone"),
+    (r##"(?i)(?:ploit|payload.*generate|shell.*generate|exploit.*generate)"##, "Custom exploit/payload generation script"),
+    (r##"(?i)(?:sploitscan|auto.*exploit|autoexploit|mass.*exploit)"##, "Mass/automated exploit scanning"),
+]);
+
+pub struct ExploitFrameworkRule;
+impl Rule for ExploitFrameworkRule {
+    fn id(&self) -> &str { "SEC-139" }
+    fn name(&self) -> &str { "Exploit Framework Patterns" }
+    fn severity(&self) -> Severity { Severity::Critical }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["python", "bash", "shell", "ruby", "powershell"]) }
+    fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for (pattern, problem) in SEC139_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let snippet = extract_snippet(code, m.start(), m.end());
+                    findings.push(Finding {
+                        rule_id: "SEC-139".to_string(),
+                        severity: Severity::Critical.as_str().to_string(),
+                        cwe_id: Some("CWE-20".to_string()),
+                        cvss_score: Some(9.8),
+                        owasp_id: Some("A01:2021".to_string()),
+                        start: m.start(), end: m.end(), snippet,
+                        problem: problem.to_string(),
+                        fix_hint: "Exploit framework tools detected. Ensure only used in authorized penetration testing with proper scoping.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings.sort_by_key(|f| f.start);
+        findings
+    }
+    fn fix(&self, _: &Finding, _: &str) -> Option<Fix> { None }
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ---------------------------------------------------------------------------
+// Cloud Security Scanning Patterns (SEC-140)
+// ---------------------------------------------------------------------------
+
+static SEC140_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"(?i)(?:trivy\s+|trivy\s+image|trivy\s+fs\s|trivy\s+--severity)"##, "Trivy vulnerability scanner"),
+    (r##"(?i)(?:trivy\s+--security-checks|trivy\s+--vuln-type|trivy\s+k8s)"##, "Trivy cloud/k8s security checks"),
+    (r##"(?i)(?:prowler\s+|prowler\s+v3|prowler\s+-f\s|prowler\s+-c\s)"##, "Prowler AWS security assessment"),
+    (r##"(?i)(?:scoutsuite|scout\s+--琴|scout\s+-p\s|scout\s+aws)"##, "ScoutSuite multi-cloud security scanner"),
+    (r##"(?i)(?:pac\w|pacu|pacu\.py|pacu\s+--help)"##, "Pacu AWS exploitation framework"),
+    (r##"(?i)(?:cloud_enum|cloud-enumerate|cloud_enum\.py)"##, "Cloud resource enumeration tool"),
+    (r##"(?i)(?:awscli.*--profile|aws\s+sts\s+get-caller-identity|aws.*enum)"##, "AWS CLI enumeration patterns"),
+    (r##"(?i)(?:az\s+vm\s+list|az\s+account\s+list|azure.*enum|az cli.*scan)"##, "Azure CLI enumeration patterns"),
+    (r##"(?i)(?:gcloud\s+--project|gcloud\s+compute\s+list|gcp.*enum|gcloud.*scan)"##, "GCP enumeration patterns"),
+    (r##"(?i)(?:kube-hunter|kube-hunter\.py|kube-bench|popeye.*k8s)"##, "Kubernetes security scanners"),
+]);
+
+pub struct CloudSecurityScanRule;
+impl Rule for CloudSecurityScanRule {
+    fn id(&self) -> &str { "SEC-140" }
+    fn name(&self) -> &str { "Cloud Security Scanning Patterns" }
+    fn severity(&self) -> Severity { Severity::High }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["python", "bash", "shell"]) }
+    fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for (pattern, problem) in SEC140_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let snippet = extract_snippet(code, m.start(), m.end());
+                    findings.push(Finding {
+                        rule_id: "SEC-140".to_string(),
+                        severity: Severity::High.as_str().to_string(),
+                        cwe_id: Some("CWE-200".to_string()),
+                        cvss_score: Some(7.5),
+                        owasp_id: Some("A01:2021".to_string()),
+                        start: m.start(), end: m.end(), snippet,
+                        problem: problem.to_string(),
+                        fix_hint: "Cloud security scanning tools detected. Verify proper IAM, least-privilege, and cloud-native security tooling in production.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings.sort_by_key(|f| f.start);
+        findings
+    }
+    fn fix(&self, _: &Finding, _: &str) -> Option<Fix> { None }
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
+// ---------------------------------------------------------------------------
+// Wireless Security Patterns (SEC-141) - Extended from SEC-119
+// ---------------------------------------------------------------------------
+
+static SEC141_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
+    (r##"(?i)(?:aircrack-ng|aircrack-ng\s+-w\s|aircrack-ng\s+-b\s)"##, "Aircrack-ng WiFi security auditing"),
+    (r##"(?i)(?:reaver|reaver\s+-b\s|reaver\s+-i\s|wps.*brute|wash.*-i)"##, "Reaver WPS brute-force attack"),
+    (r##"(?i)(?: bully|bully\.py|bully\s+-b\s|bully\s+-逆)"##, "Bully WPS attack tool"),
+    (r##"(?i)(?:kismet|kismet\s+-c\s|kismet\s+--daemon)"##, "Kismet wireless detector/sniffer"),
+    (r##"(?i)(?:wifite|wifite\s+-i\s|wifite\s+--no-wep|wifite\s+--walk)"##, "Wifite automated wireless attack"),
+    (r##"(?i)(?:hashcat.*wpa|hashcat\s+-m\s+2500|hashcat\s+-m\s+16800)"##, "Hashcat WPA/WPA2 handshake cracking"),
+    (r##"(?i)(?:cowpatty|cowpatty\s+-r\s|cowpatty\s+-d\s|cowpatty\s+-c)"##, "Cowpatty WPA PSK cracking"),
+    (r##"(?i)(?:pyrit|pyrit\s+attack|pyrit\s+-r\s|pyrit\s+strip)"##, "Pyrit GPU-based WPA cracking"),
+    (r##"(?i)(?:hcxdumptool|hcxpcapngtool|hcxtools|hcxdump.*-i)"##, "hcxdumptool / hcxtools WiFi tools"),
+]);
+
+pub struct WirelessAttackRule;
+impl Rule for WirelessAttackRule {
+    fn id(&self) -> &str { "SEC-141" }
+    fn name(&self) -> &str { "Wireless Security Attack Patterns" }
+    fn severity(&self) -> Severity { Severity::High }
+    fn supported_languages(&self) -> Option<&'static [&'static str]> { Some(&["python", "bash", "shell", "c"]) }
+    fn detect(&self, _tree: &Tree, code: &str) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for (pattern, problem) in SEC141_PATTERNS.iter() {
+            if let Ok(re) = Regex::new(pattern) {
+                for m in re.find_iter(code) {
+                    let snippet = extract_snippet(code, m.start(), m.end());
+                    findings.push(Finding {
+                        rule_id: "SEC-141".to_string(),
+                        severity: Severity::High.as_str().to_string(),
+                        cwe_id: Some("CWE-310".to_string()),
+                        cvss_score: Some(7.4),
+                        owasp_id: Some("A01:2021".to_string()),
+                        start: m.start(), end: m.end(), snippet,
+                        problem: problem.to_string(),
+                        fix_hint: "Wireless attack tools detected. Ensure WPA3/WPA2-Enterprise with strong passwords. Use certificate-based auth.".to_string(),
+                        auto_fix_available: false,
+                    });
+                }
+            }
+        }
+        findings.sort_by_key(|f| f.start);
+        findings
+    }
+    fn fix(&self, _: &Finding, _: &str) -> Option<Fix> { None }
+    fn supports_auto_fix(&self) -> bool { false }
+}
+
 pub fn all_hackingtool_rules() -> Vec<Box<dyn Rule>> {
     vec![
         Box::new(SocialEngineeringRule),
@@ -389,5 +889,15 @@ pub fn all_hackingtool_rules() -> Vec<Box<dyn Rule>> {
         Box::new(BackdoorRootkitRule),
         Box::new(CredentialAttackRule),
         Box::new(NetworkSniffingRule),
+        Box::new(SqlInjectionAttackRule),
+        Box::new(WebVulnScannerRule),
+        Box::new(ForensicsAnalysisRule),
+        Box::new(SteganographyRule),
+        Box::new(CloudADAttackRule),
+        Box::new(MobileSecurityRule),
+        Box::new(DDOSAttackRule),
+        Box::new(ExploitFrameworkRule),
+        Box::new(CloudSecurityScanRule),
+        Box::new(WirelessAttackRule),
     ]
 }

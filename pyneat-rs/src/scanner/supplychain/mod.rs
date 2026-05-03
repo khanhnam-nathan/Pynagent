@@ -11,7 +11,9 @@ pub mod lock_parser;
 pub mod license;
 pub mod rules;
 
-pub use vuln_db::{Ecosystem, OsvClient, Vulnerability};
+pub use vuln_db::Ecosystem;
+#[allow(unused)]
+pub use vuln_db::OsvClient;
 #[allow(unused)]
 pub use lock_parser::{LockPackage, IntegrityStatus};
 #[allow(unused)]

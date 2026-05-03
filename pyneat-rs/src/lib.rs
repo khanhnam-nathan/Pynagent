@@ -15,9 +15,6 @@
 //! You should have received a copy of the GNU Affero General Public License
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// Many re-exports here are for the PyO3/Python API surface and are not used internally.
-#![allow(unused_imports)]
-
 pub mod fixer;
 pub mod rules;
 pub mod scanner;
@@ -28,6 +25,47 @@ pub mod ai_analysis;
 pub mod lsp;
 
 pub use lsp::{run_server, LspConfig};
+pub use clap::{Parser, ValueEnum};
+
+#[derive(Parser, Debug)]
+pub struct LspArgs {
+    /// Enable scan on file save
+    #[arg(long)]
+    pub scan_on_save: bool,
+
+    /// Enable scan on type (real-time)
+    #[arg(long)]
+    pub scan_on_type: bool,
+
+    /// Debounce delay in ms
+    #[arg(long, default_value = "500")]
+    pub debounce_ms: u64,
+
+    /// Severity threshold
+    #[arg(long, default_value = "medium")]
+    pub severity: String,
+
+    /// Enabled rule IDs (comma-separated)
+    #[arg(long)]
+    pub rules: Option<String>,
+
+    /// Use stdio transport (for LSP, ignored as stdio is the default)
+    #[arg(long, hide = true)]
+    pub stdio: bool,
+}
+
+pub fn run_server_with_args(args: LspArgs) {
+    let config = LspConfig {
+        severity_threshold: args.severity,
+        scan_on_save: args.scan_on_save,
+        debounce_ms: args.debounce_ms,
+        enable_real_time: true,
+        enabled_rules: args.rules
+            .map(|s| s.split(',').map(|v| v.trim().to_string()).collect())
+            .unwrap_or_default(),
+    };
+    lsp::run_server_with_config(config);
+}
 pub use rules::base::{Finding, Fix, Rule, Severity};
 pub use rules::security::all_security_rules;
 pub use rules::ast_rules::all_ast_rules;
@@ -44,7 +82,7 @@ pub use scanner::{
 };
 pub use sarif::writer::SarifBuilder;
 pub use scanner::ml::{AnomalyEngine, AnomalyFinding, CodeMetrics};
-pub use ai_analysis::{LlmAnalyzer, LlmAnalysisResult, has_api_key, AiFix};
+pub use ai_analysis::{LlmAnalyzer, has_api_key};
 
 #[cfg(test)]
 mod lib_tests;
@@ -501,8 +539,8 @@ fn cve_check_package(package_name: &str, version: &str, ecosystem: &str) -> PyRe
 
     let cwe_re = regex::Regex::new(r"CWE-\d+").unwrap();
 
-    let vulns = match result {
-        Ok(vulns) => vulns.into_iter().map(|v| {
+    let vulns: Vec<CveEntry> = match result {
+        Ok(vulns) => vulns.into_iter().map(|v: crate::scanner::supplychain::vuln_db::Vulnerability| {
             let details_str = v.details.as_deref().unwrap_or("");
             let cwe_ids = cwe_re.find_iter(details_str)
                 .map(|m| m.as_str().to_string())
@@ -554,7 +592,7 @@ fn cve_check_batch(packages_json: &str) -> PyResult<String> {
     let cwe_re = regex::Regex::new(r"CWE-\d+").unwrap();
     let now = chrono_lite_now();
 
-    let results: Vec<CveCheckResult> = inputs.into_iter().zip(batch_results.unwrap_or_default()).map(|(input, vulns)| {
+    let results: Vec<CveCheckResult> = inputs.into_iter().zip(batch_results.unwrap_or_default()).map(|(input, vulns): (_, Vec<_>)| {
         let vulns_out: Vec<CveEntry> = vulns.into_iter().map(|v| {
             let details_str = v.details.as_deref().unwrap_or("");
             let cwe_ids = cwe_re.find_iter(details_str)
@@ -818,7 +856,8 @@ fn scan_dependencies(root: &str, check_cve: bool, check_license: bool) -> PyResu
             for chunk in query_pkgs.chunks(batch_size) {
                 match rt.block_on(osv.query_batch(chunk.to_vec())) {
                     Ok(results) => {
-                        for (vulns, pkg) in results.into_iter().zip(chunk.iter()) {
+                        let osv_results: Vec<Vec<_>> = results;
+                        for (vulns, pkg) in osv_results.into_iter().zip(chunk.iter()) {
                             for v in vulns {
                                 all_findings.push(DependencyFinding {
                                     package: pkg.0.clone(),
@@ -1012,9 +1051,34 @@ fn pyneat_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Taint analysis
     m.add_function(wrap_pyfunction!(run_taint_analysis, m)?)?;
 
+    // LSP server
+    m.add_function(wrap_pyfunction!(run_lsp_server, m)?)?;
+
     // Rule configuration
     m.add_function(wrap_pyfunction!(get_rule_config_schema, m)?)?;
 
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
+    Ok(())
+}
+
+/// Run the LSP server with Python-provided configuration.
+#[pyfunction]
+fn run_lsp_server(
+    scan_on_save: bool,
+    scan_on_type: bool,
+    debounce_ms: u64,
+    severity: &str,
+    rules: Option<String>,
+) -> PyResult<()> {
+    let config = LspConfig {
+        severity_threshold: severity.to_string(),
+        scan_on_save,
+        debounce_ms,
+        enable_real_time: scan_on_type,
+        enabled_rules: rules
+            .map(|s| s.split(',').map(|v| v.trim().to_string()).collect())
+            .unwrap_or_default(),
+    };
+    lsp::run_server_with_config(config);
     Ok(())
 }

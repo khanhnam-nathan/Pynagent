@@ -3,11 +3,13 @@
 //! Builds a call graph across functions and files, then uses function summaries
 //! to track taint propagation across function boundaries.
 
+#[allow(dead_code)]
+
 use std::collections::{HashMap, HashSet};
 
 use crate::scanner::ln_ast::LnAst;
 use crate::scanner::taint::engine::{TaintConfig, TaintEngine, TaintFinding};
-use crate::scanner::taint::labels::{TaintLabel, TaintRule};
+use crate::scanner::taint::labels::TaintLabel;
 
 /// A function key for the call graph (name + arity for disambiguation).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

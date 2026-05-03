@@ -3,6 +3,8 @@
 //! These types define what constitutes a taint source, dangerous sink,
 //! sanitizer, and custom propagation rule.
 
+#[allow(dead_code)]
+
 use std::collections::HashSet;
 
 /// Represents different kinds of tainted data.

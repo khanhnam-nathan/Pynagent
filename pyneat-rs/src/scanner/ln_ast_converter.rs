@@ -4,6 +4,8 @@
 //! (functions, classes, imports, calls) from any supported language,
 //! converting them into LnAst structures that rules can consume uniformly.
 
+#[allow(dead_code)]
+
 use crate::scanner::ln_ast::{
     LnAssignment, LnAst, LnCall, LnCatchBlock, LnClass, LnComment, LnDeepNesting,
     LnFunction, LnIdentifier, LnImport, LnString, LnTodo, TODO_MARKERS,

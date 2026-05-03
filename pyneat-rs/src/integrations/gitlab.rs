@@ -5,6 +5,8 @@
 //! Integrates with GitLab SAST (Static Application Security Testing).
 //! Provides async API client for uploading reports, creating issues, and checking pipelines.
 
+#[allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 
 /// GitLab CI configuration for SAST.

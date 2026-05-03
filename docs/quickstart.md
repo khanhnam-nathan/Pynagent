@@ -91,46 +91,86 @@ repos:
 ### Basic Scanning
 
 ```python
-from pyneat.core import RuleEngine
-from pyneat.rules import ALL_RULES
+from pyneat import clean_code, analyze_code
 
-engine = RuleEngine(rules=ALL_RULES)
-findings = engine.scan_code("your code here", language="python")
+# Clean code string (auto-fix x != None -> x is not None)
+result = clean_code("x != None")
+print(result)  # "x is not None"
 
-for finding in findings:
-    print(f"{finding.rule_id}: {finding.message}")
+# Analyze without fixing (returns report)
+report = analyze_code("x == None; print('debug')")
+for issue in report['issues']:
+    print(f"  - {issue}")
+```
+
+### Using the RuleEngine Directly
+
+```python
+from pathlib import Path
+from pyneat import RuleEngine, CodeFile, RuleConfig
+from pyneat.rules import IsNotNoneRule, DebugCleaner
+
+engine = RuleEngine(rules=[
+    IsNotNoneRule(RuleConfig(enabled=True)),
+    DebugCleaner(mode="safe"),
+])
+
+source = "x = None\nprint('debug')"
+code_file = CodeFile(path=Path("demo.py"), content=source)
+result = engine.process_code_file(code_file)
+
+print(result.transformed_content)
+print(f"Changes: {result.changes_made}")
 ```
 
 ### Security Scanning
 
 ```python
-from pyneat.rules.security import SecurityScannerRule
+from pyneat import RuleEngine, CodeFile, RuleConfig
+from pyneat.rules import SecurityScannerRule
 
-security_rules = [SecurityScannerRule()]
-engine = RuleEngine(rules=security_rules)
-findings = engine.scan_code(code, language="python")
+engine = RuleEngine(rules=[SecurityScannerRule(RuleConfig(enabled=True))])
+result = engine.process_code_file(CodeFile(path=Path("app.py"), content=code))
+for finding in result.changes_made:
+    print(f"Security: {finding}")
 ```
 
-### Auto-fixing
+### Auto-fixing a File
 
 ```python
-from pyneat.fixer import AutoFixer
+from pathlib import Path
+from pyneat import clean_file
 
-fixer = AutoFixer()
-result = fixer.fix_file("your_file.py", dry_run=True)
-print(result.diff)  # Preview changes
+result = clean_file(Path("my_script.py"), in_place=True, backup=True)
+if result.success:
+    print(f"Made {len(result.changes_made)} changes")
 ```
 
 ### Export Reports
 
 ```python
-from pyneat.core.manifest import export_to_sarif, export_to_junit_xml
+from pathlib import Path
+from pyneat.core.manifest import (
+    export_to_sarif,
+    export_to_junit_xml,
+    export_to_gitlab_sast,
+    export_to_html_report,
+)
+from pyneat import RuleEngine, CodeFile, RuleConfig
+from pyneat.rules import SecurityScannerRule
+
+# Analyze and collect markers
+engine = RuleEngine(rules=[SecurityScannerRule(RuleConfig(enabled=True))])
+result = engine.process_code_file(CodeFile(path=Path("app.py"), content=code))
 
 # SARIF for GitHub Code Scanning
-sarif = export_to_sarif(markers, "file.py")
+sarif = export_to_sarif(result.agent_markers, Path("app.py"))
 
 # JUnit XML for CI/CD
-junit = export_to_junit_xml(markers, source_file="file.py")
+junit = export_to_junit_xml(result.agent_markers, Path("app.py"))
+
+# HTML report
+html = export_to_html_report(result.agent_markers, title="PyNEAT Scan")
 ```
 
 ## Configuration
@@ -177,9 +217,7 @@ x != None  # pyneat: ignore-line
 - name: PyNeat Security Scan
   run: |
     pip install pyneat
-    pyneat check . --export-sarif results.sarif
-  env:
-    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    pyneat report . -f sarif -o results.sarif
 ```
 
 ### Git Pre-commit Hook
@@ -237,12 +275,10 @@ cargo build --release
 ## Next Steps
 
 - Read the full [README.md](../README.md)
-- Explore [examples/](../examples/) for more use cases
-- Check out [rules documentation](writing-rules.md) to create custom rules
-- Review [architecture documentation](architecture.md) for technical details
+- Check out [docs/architecture.md](architecture.md) for technical details
+- Check out [docs/writing-rules.md](writing-rules.md) to create custom rules
 
 ## Getting Help
 
 - GitHub Issues: Report bugs and request features
 - Documentation: Check the [docs/](../docs/) folder
-- Examples: See the [examples/](../examples/) directory

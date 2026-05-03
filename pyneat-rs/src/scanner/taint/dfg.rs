@@ -4,6 +4,8 @@
 //! Each node represents an expression (variable, call, operation, etc.) and edges
 //! represent taint propagation.
 
+#[allow(dead_code)]
+
 use std::collections::{HashMap, HashSet};
 use crate::scanner::taint::labels::TaintLabel;
 

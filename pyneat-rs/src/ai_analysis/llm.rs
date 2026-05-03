@@ -5,6 +5,8 @@
 //!
 //! Copyright (C) 2026 PyNEAT Authors
 
+#[allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 
 /// Result of LLM analysis of a code snippet.

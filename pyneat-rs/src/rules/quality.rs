@@ -15,6 +15,8 @@
 //! You should have received a copy of the GNU Affero General Public License
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+#[allow(dead_code)]
+
 use crate::rules::base::{extract_snippet, Fix, Finding, Rule, Severity};
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -46,6 +48,7 @@ static NAMING_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| v
     (r#"(?m)^[A-Z][A-Z0-9_]*\s*="#, "Variable name should use snake_case"),
 ]);
 
+#[allow(dead_code)]
 static DEAD_CODE_PATTERNS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| vec![
     (r"(?m)^\s*#.*$", "Empty or commented lines"),
     (r"(?m)^def\s+\w+\s*\([^)]*\)\s*:\s*(?:#.*)?$", "Function definition with only pass/return"),

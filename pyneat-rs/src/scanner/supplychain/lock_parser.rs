@@ -9,6 +9,8 @@
 //! - `requirements.txt` (pip) - checks for --hash= mode
 //! - `Cargo.lock` (Rust) - extracts licenses and versions
 
+#[allow(dead_code)]
+
 use regex::Regex;
 use serde::Deserialize;
 

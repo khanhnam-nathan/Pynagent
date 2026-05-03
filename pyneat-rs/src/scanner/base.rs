@@ -17,6 +17,8 @@
 
 #![allow(unused_variables)]
 
+#[allow(dead_code)]
+
 use std::collections::HashMap;
 use rayon::prelude::*;
 use std::path::Path;

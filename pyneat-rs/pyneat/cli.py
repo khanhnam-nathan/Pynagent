@@ -2032,7 +2032,7 @@ def lsp(stdio, tcp, port, scan_on_save, scan_on_type, debounce_ms, severity, rul
         pyneat lsp --rules SEC-001,SEC-002,SEC-003
     """
     try:
-        from pyneat_rs import run_server
+        from pyneat_rs import run_lsp_server
     except ImportError:
         click.secho("[ERROR] PyNEAT Rust backend not installed.", fg="red", bold=True)
         click.echo("  Install with: pip install pyneat[rust]")
@@ -2052,7 +2052,13 @@ def lsp(stdio, tcp, port, scan_on_save, scan_on_type, debounce_ms, severity, rul
         click.echo(f"  Rules: {rules}")
 
     try:
-        run_server()
+        run_lsp_server(
+            scan_on_save=scan_on_save,
+            scan_on_type=scan_on_type,
+            debounce_ms=debounce_ms,
+            severity=severity,
+            rules=rules if rules else None,
+        )
     except KeyboardInterrupt:
         click.echo("\nPyNEAT LSP server stopped.")
     except Exception as e:

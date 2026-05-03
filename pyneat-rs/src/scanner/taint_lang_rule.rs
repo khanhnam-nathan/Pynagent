@@ -3,6 +3,8 @@
 //! Wraps the TaintEngine as a LanguageScanner so it plugs into the main scan pipeline.
 //! Performs data-flow-based vulnerability detection (vs pattern-based rules).
 
+#[allow(dead_code)]
+
 use crate::scanner::base::{LangFinding, LangRule, LanguageScanner};
 use crate::scanner::ln_ast::LnAst;
 use crate::scanner::multilang::parse_ln_ast;
@@ -126,6 +128,7 @@ impl TaintLangScanner {
 
     /// Run intra-procedural taint analysis (fast, single file).
     /// Uses the worklist-based TaintEngine within each function.
+    #[allow(dead_code)]
     fn run_taint(&self, code: &str) -> Vec<LangFinding> {
         let ast_json = match parse_ln_ast(code, &self.lang) {
             Ok(a) => a,

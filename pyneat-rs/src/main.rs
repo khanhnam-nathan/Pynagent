@@ -15,9 +15,6 @@
 //! You should have received a copy of the GNU Affero General Public License
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// Binary uses trait impls; required methods (LangRule, LanguageScanner) are not all called.
-#![allow(unused)]
-
 use clap::{Parser, Subcommand, ValueEnum};
 use std::path::Path;
 use std::sync::Arc;
@@ -28,7 +25,7 @@ use crate::fixer::diff::format_findings_report;
 use crate::fixer::apply_fix::FixRange;
 use crate::rules::security::all_security_rules;
 use crate::scanner::tree_sitter::parse;
-use crate::scanner::base::{LanguageScanner, LangRule};
+use crate::scanner::base::LanguageScanner;
 use crate::scanner::{JavaScriptScanner, TypeScriptScanner, GoScanner, JavaScanner, CSharpScanner, PhpScanner, RubyScanner, RustScanner};
 use crate::scanner::enterprise::EnterpriseScanner;
 use crate::scanner::TaintLangScanner;
@@ -94,7 +91,7 @@ fn compute_fingerprint(rule_id: &str, file_path: &str, line: usize) -> String {
 fn get_file_hash(path: &Path) -> Option<String> {
     let metadata = std::fs::metadata(path).ok()?;
     let modified = metadata.modified().ok()?;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::UNIX_EPOCH;
     let modified_epoch = modified.duration_since(UNIX_EPOCH).ok()?.as_secs();
     use ahash::AHasher;
     use std::hash::{Hash, Hasher};
@@ -349,10 +346,30 @@ enum Commands {
     },
 
     /// Start as LSP server
-    Server {
-        /// Port to listen on
-        #[arg(long, default_value = "4444")]
-        port: u16,
+    Lsp {
+        /// Enable scan on file save
+        #[arg(long)]
+        scan_on_save: bool,
+
+        /// Enable scan on type (real-time)
+        #[arg(long)]
+        scan_on_type: bool,
+
+        /// Debounce delay in ms
+        #[arg(long, default_value = "500")]
+        debounce_ms: u64,
+
+        /// Severity threshold
+        #[arg(long, default_value = "medium")]
+        severity: String,
+
+        /// Enabled rule IDs (comma-separated)
+        #[arg(long)]
+        rules: Option<String>,
+
+        /// stdio transport (ignored, for LSP compatibility)
+        #[arg(long, hide = true)]
+        stdio: bool,
     },
 
     /// CI mode (optimized output)
@@ -390,7 +407,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     match args.command {
-        Commands::Scan { paths, fix, output, exclude_paths, include_paths, rules, no_fix, fix_only, parallel, timeout, config, baseline, incremental, ai_fix, fail_on } => {
+        Commands::Scan { paths, fix, output, exclude_paths, include_paths: _, rules: _, no_fix, fix_only, parallel, timeout: _, config: _, baseline, incremental, ai_fix, fail_on } => {
             scan_paths(&paths, fix || !no_fix, output.as_deref(), &args.format, &args.severity, exclude_paths.as_deref(), fix_only, fail_on.as_ref(), parallel, baseline.as_deref(), incremental, ai_fix)?;
         }
         Commands::ListRules { category, language } => {
@@ -406,8 +423,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Upload { file, provider, github_token, owner, repo, category } => {
             upload_results(&file, provider, github_token.as_deref(), owner.as_deref(), repo.as_deref(), &category)?;
         }
-        Commands::Server { port } => {
-            start_lsp_server(port);
+        Commands::Lsp { scan_on_save, scan_on_type, debounce_ms, severity, rules, stdio: _ } => {
+            pyneat_rs::run_server_with_args(pyneat_rs::LspArgs {
+                scan_on_save,
+                scan_on_type,
+                debounce_ms,
+                severity: severity.clone(),
+                rules: rules.clone(),
+                stdio: false,
+            });
         }
         Commands::Ci { paths, output } => {
             ci_mode(&paths, output.as_deref())?;
@@ -448,7 +472,7 @@ fn scan_paths(
     let ruby_scanner = RubyScanner::new();
     let rust_scanner = RustScanner::new();
     let enterprise_scanner = EnterpriseScanner::new();
-    let taint_scanner = TaintLangScanner::new("python");
+    let _taint_scanner = TaintLangScanner::new("python");
 
     // Parse exclude patterns
     let exclude_patterns: Vec<String> = exclude_paths
@@ -651,11 +675,11 @@ fn scan_paths(
             let results: Vec<&ScanResult> = all_results.iter()
                 .filter(|r| severity_level(&r.severity) >= threshold_level)
                 .collect();
-            if let Err(e) = write_baseline(baseline_path, &results[..], paths.len()) {
+            match write_baseline(baseline_path, &results[..], paths.len()) { Err(e) => {
                 eprintln!("Warning: failed to write baseline: {}", e);
-            } else {
+            } _ => {
                 println!("Baseline written to: {}", baseline_path);
-            }
+            }}
             results
         }
     } else {
@@ -873,7 +897,7 @@ fn generate_sarif_output(results: &[&ScanResult], ai_fix: bool) -> serde_json::V
     };
 
     for result in results {
-        let code = std::fs::read_to_string(&result.file).unwrap_or_default();
+        let _code = std::fs::read_to_string(&result.file).unwrap_or_default();
         let location = crate::sarif::SarifLocation::new(
             &result.file,
             result.line,
@@ -1372,12 +1396,6 @@ fn upload_results(
     }
 
     Ok(())
-}
-
-fn start_lsp_server(port: u16) {
-    println!("PyNEAT LSP server starting on stdio...");
-    println!("For TCP mode on port {}, use: pyneat lsp --tcp --port {}", port, port);
-    pyneat_rs::run_server();
 }
 
 fn ci_mode(paths: &[String], output: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {

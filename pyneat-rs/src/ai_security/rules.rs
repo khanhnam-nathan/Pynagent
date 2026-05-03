@@ -2,6 +2,8 @@
 //!
 //! Copyright (C) 2026 PyNEAT Authors
 
+#[allow(dead_code)]
+
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 

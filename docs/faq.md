@@ -149,8 +149,25 @@ Other issues are reported but require manual intervention.
 ### Q: How do I benchmark PyNeat?
 
 ```bash
-python pyneat/benchmark.py --iterations 10 --output results.json
+# Python benchmark (compares Rust vs Python scanner)
+cd pyneat-rs
+python benchmark.py --files 200 --iterations 5
+
+# Rust criterion benchmarks
+cargo bench --bench compare
 ```
+
+For detailed benchmark results, see [pyneat-rs/README.md](../pyneat-rs/README.md).
+
+### Q: Config file not being read
+
+PyNeat looks for config in (in priority order):
+1. `pyproject.toml` section `[tool.pyneat]`
+2. `./pyneat.yaml`
+3. `./pyneat.yml`
+4. `~/.pyneat.yaml`
+
+Make sure the file is in the correct location.
 
 ## Integrations
 
@@ -167,7 +184,7 @@ repos:
     hooks:
       - id: pyneat-check
         name: PyNeat Check
-        entry: pyneat clean --check
+        entry: pyneat check
         language: system
         types: [python]
 ```
@@ -183,13 +200,27 @@ repos:
 ### Q: How do I export to SARIF format?
 
 ```bash
-pyneat check file.py --export-sarif results.sarif
+pyneat report ./src -f sarif -o results.sarif
+```
+
+Or via Python API:
+
+```python
+from pyneat.core.manifest import export_to_sarif
+sarif = export_to_sarif(markers, source_file=Path("app.py"))
 ```
 
 ### Q: How do I integrate with SonarQube?
 
 ```bash
-pyneat check file.py --export-sonarqube results.json
+pyneat report ./src -f sonarqube -o sonar-report.json
+```
+
+Or via Python API:
+
+```python
+from pyneat.core.manifest import export_to_sonarqube
+issues = export_to_sonarqube(markers, source_file=Path("app.py"))
 ```
 
 ### Q: How do I create a HTML report?
@@ -230,15 +261,6 @@ pip install pyneat
 - Configure specific rules in `pyneat.yaml`
 - Use inline ignores: `# pyneat: ignore-line`
 
-### Q: Config file not being read
-
-PyNeat looks for config in:
-1. `./pyneat.yaml`
-2. `./pyneat.yml`
-3. `~/.pyneat.yaml`
-
-Make sure the file is in the correct location.
-
 ## Contributing
 
 ### Q: How do I contribute to PyNeat?
@@ -262,4 +284,4 @@ Open a feature request on GitHub with:
 
 ## License
 
-PyNeat is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+PyNeat is licensed under the **GNU Affero General Public License v3.0 (AGPLv3)**. See [LICENSE](LICENSE) for details.

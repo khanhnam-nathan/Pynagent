@@ -2,6 +2,8 @@
 //!
 //! Queries OSV.dev API to check packages against known vulnerabilities.
 
+#[allow(dead_code)]
+
 use std::collections::HashMap;
 use std::time::Duration;
 

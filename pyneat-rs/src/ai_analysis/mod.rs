@@ -6,4 +6,4 @@
 
 pub mod llm;
 
-pub use llm::{LlmAnalyzer, LlmAnalysisResult, LlmAnalysisError, has_api_key, AiFix};
+pub use llm::{LlmAnalyzer, has_api_key};

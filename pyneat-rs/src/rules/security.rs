@@ -16,10 +16,6 @@
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::rules::base::{extract_snippet, Fix, Finding, Rule, Severity};
-use crate::rules::extended_security::{
-    SqlInjectionSinkRule, XssSinkRule, LfiSinkRule, CsrfSinkRule,
-    SsrfSinkRule, OpenRedirectSinkRule,
-};
 use once_cell::sync::Lazy;
 use tree_sitter::Tree;
 

@@ -334,9 +334,9 @@ pub struct PyneatLspServer {
 
 impl PyneatLspServer {
     pub fn new(config: LspConfig) -> Self {
-        tracing_subscriber::fmt()
+        let _ = tracing_subscriber::fmt()
             .with_env_filter("pyneat=warn")
-            .init();
+            .try_init();
         tracing::info!("PyNEAT LSP server starting on stdio...");
 
         let (debounce_tx, debounce_rx) = mpsc::channel();
@@ -928,6 +928,11 @@ fn offset_from_position(content: &str, line: u32, character: u32) -> usize {
 /// Run the PyNEAT LSP server. Call this when `--lsp` flag is passed.
 pub fn run_server() {
     let config = LspConfig::default();
+    let mut server = PyneatLspServer::new(config);
+    server.run();
+}
+
+pub fn run_server_with_config(config: LspConfig) {
     let mut server = PyneatLspServer::new(config);
     server.run();
 }

@@ -13,50 +13,75 @@ graph TB
     subgraph "User Interface"
         CLI[CLI - cli.py]
         API[Python API]
+        LSP[LSP Server]
     end
 
     subgraph "Core Engine"
         Engine[RuleEngine]
-        Cache[Module Cache]
-        Guard[Semantic Guard]
+        Cache[IncrementalCache]
+        SemanticGuard[SemanticDiffGuard]
+        TypeShield[TypeAwareShield]
+    end
+
+    subgraph "Rust Backend pyneat-rs"
+        RustCLI[Rust CLI - main.rs]
+        PyO3[PyO3 Bindings]
+        LN_AST[LN-AST Normalizer]
+        RustRules[Rust Rule Engine]
+        Rayon[Rayon Parallelism]
+        tree_sitter[tree-sitter Parsers]
     end
 
     subgraph "Rules"
-        subgraph "Safe Rules"
+        subgraph "Safe (always on)"
             IsNotNone[IsNotNoneRule]
             RangeLen[RangeLenRule]
             Security[SecurityScannerRule]
             Typing[TypingRule]
         end
 
-        subgraph "Conservative Rules"
+        subgraph "Conservative (opt-in)"
             Unused[UnusedImportRule]
             FString[FStringRule]
             Magic[MagicNumberRule]
         end
 
-        subgraph "Destructive Rules"
+        subgraph "Destructive (opt-in)"
             ImportCleaning[ImportCleaningRule]
             Naming[NamingConventionRule]
             DeadCode[DeadCodeRule]
         end
+
+        subgraph "AI Security"
+            PromptInject[Prompt Injection]
+            ContextConfusion[Context Confusion]
+            ToolCollision[Tool Call Collision]
+        end
     end
 
-    subgraph "Scanners"
-        LibCST[LibCST Scanner]
-        RustScanner[Rust Scanner]
-        Regex[Regex Scanner]
+    subgraph "Parsers"
+        LibCST[LibCST - Python]
+        tree_sitter_py[tree-sitter - Python]
+        tree_sitter_js[tree-sitter - JS/TS/Go/Java/Rust/C#/PHP/Ruby]
     end
 
     CLI --> Engine
     API --> Engine
     Engine --> Cache
-    Engine --> Guard
+    Engine --> SemanticGuard
     Engine --> IsNotNone
     Engine --> Security
+    Engine --> Typing
     Security --> LibCST
-    Security --> Regex
-    RustScanner --> Engine
+    Security --> RustRules
+    LSP --> RustRules
+    RustCLI --> PyO3
+    PyO3 --> LN_AST
+    LN_AST --> RustRules
+    RustRules --> Rayon
+    RustRules --> tree_sitter
+    tree_sitter_py --> LN_AST
+    tree_sitter_js --> LN_AST
 ```
 
 ## Component Descriptions
@@ -69,32 +94,36 @@ The command-line interface provides user-facing commands:
 - `pyneat check <target>` - Security scan
 - `pyneat explain <rule_id>` - Explain a rule
 - `pyneat report <target>` - Generate report
+- `pyneat lsp` - Start LSP server
 
 ### RuleEngine (`pyneat/core/engine.py`)
 
 The core orchestration engine:
 
-1. Parses source code using LibCST
-2. Runs rules in priority order
+1. Parses source code using LibCST or tree-sitter (via Rust)
+2. Runs rules in priority order (safe -> conservative -> destructive)
 3. Validates output (AST compile check)
 4. Detects conflicts between rules
-5. Applies semantic guards
+5. Applies semantic guards and type shields
 
 ### Rules (`pyneat/rules/`)
 
 Each rule is a standalone class that:
 
-1. Implements `apply(CodeFile) -> TransformationResult`
-2. Can read/write AST/CST nodes
-3. Returns changes and security findings
+1. Inherits from `Rule` base class
+2. Implements `apply(CodeFile) -> TransformationResult`
+3. Can read/write AST/CST nodes
+4. Returns changes and security findings
 
-### Security Scanner (`pyneat/rules/security/`)
+### Rust Backend (`pyneat-rs/`)
 
-Modular security scanner with:
+High-performance scanner written in Rust:
 
-- `python/scanners.py` - Python vulnerability scanners
-- `php/scanners.py` - PHP vulnerability scanners
-- 50+ security rules covering OWASP Top 10
+- **tree-sitter** for AST parsing across 9 languages
+- **Rayon** for parallel rule evaluation
+- **PyO3** for seamless Python bindings
+- **LN-AST** normalizer for language-neutral code representation
+- See [pyneat-rs/README.md](../pyneat-rs/README.md) for full details
 
 ## Data Flow
 
@@ -103,19 +132,30 @@ sequenceDiagram
     participant User
     participant CLI
     participant Engine
+    participant Rust
     participant Rule
     participant LibCST
 
     User->>CLI: pyneat clean file.py
     CLI->>Engine: process_file(file)
-    Engine->>Engine: Parse AST/CST
-    Engine->>Engine: Check cache
-    Engine->>Rule: apply(code_file)
-    Rule->>LibCST: Transform CST
-    LibCST-->>Rule: Transformed CST
+
+    alt Python Path
+        Engine->>Engine: Parse AST/CST (LibCST)
+        Engine->>Engine: Check incremental cache
+        Engine->>Rule: apply(code_file)
+        Rule->>LibCST: Transform CST
+        LibCST-->>Rule: Transformed CST
+    else Rust Path
+        Engine->>Rust: scan_security(code)
+        Rust->>Rust: Parse LN-AST (tree-sitter)
+        Rust->>Rust: Run rules in parallel (Rayon)
+        Rust-->>Engine: findings
+    end
+
     Rule-->>Engine: TransformationResult
     Engine->>Engine: Validate AST
     Engine->>Engine: Semantic Guard Check
+    Engine->>Engine: Type Shield Check
     Engine-->>CLI: Result
     CLI-->>User: Output
 ```
@@ -124,13 +164,15 @@ sequenceDiagram
 
 ```mermaid
 graph LR
-    Config[Config Files]
-    Env[Environment]
-    CLI[CLI Args]
+    Config[Config Files<br/>pyproject.toml<br/>pyneat.yaml]
+    Env[Environment Variables]
+    CLI[CLI Arguments]
+    Pyproject[tool.pyneat<br/>section]
 
     Config --> Loader[ConfigLoader]
     Env --> Loader
     CLI --> Loader
+    Pyproject --> Loader
     Loader --> Engine
 ```
 
@@ -142,16 +184,26 @@ Create a custom rule by subclassing `Rule`:
 
 ```python
 from pyneat.rules.base import Rule
-from pyneat.core.types import CodeFile, TransformationResult
+from pyneat.core.types import CodeFile, TransformationResult, RuleConfig
 
 class MyCustomRule(Rule):
+    """Description of what this rule does."""
+
+    def __init__(self, config: RuleConfig = None):
+        super().__init__(config)
+
     @property
     def description(self) -> str:
-        return "My custom rule"
+        return "One-line description of the rule"
 
     def apply(self, code_file: CodeFile) -> TransformationResult:
-        # Detect and fix issues
-        return self._create_result(original, transformed, changes)
+        content = code_file.content
+        transformed = self._transform(content)
+        return self._create_result(code_file, transformed, ["Change description"])
+
+    def _transform(self, content: str) -> str:
+        # Transformation logic
+        return content
 ```
 
 ### Plugins
@@ -169,7 +221,7 @@ my-plugin = "my_package:MyPlugin"
 Register rules with package and priority:
 
 ```python
-from pyneat.rules.registry import RuleRegistry
+from pyneat.rules.registry import RuleRegistry, register_rule
 
 @RuleRegistry.register(package="safe", priority=10)
 class MyRule(Rule):
@@ -178,10 +230,12 @@ class MyRule(Rule):
 
 ## Performance Optimizations
 
-1. **Module-level Cache**: AST/CST trees cached across RuleEngine instances
+1. **Incremental Cache**: AST/CST trees cached across RuleEngine instances
 2. **Rule Priority**: Safe rules run first, destructive rules last
 3. **Conflict Detection**: Skip conflicting rules automatically
 4. **Semantic Guards**: Validate AST before/after transformations
+5. **Rust Backend**: Parallel tree-sitter parsing and rule evaluation with Rayon
+6. **LN-AST**: Language-neutral AST enables universal rule application
 
 ## Security Architecture
 
@@ -197,8 +251,8 @@ Security findings include:
 class SecurityFinding:
     rule_id: str
     severity: str
-    cwe_id: str
-    owasp_id: str
+    cwe_id: Optional[str]
+    owasp_id: Optional[str]
     cvss_score: float
     auto_fix_available: bool
 ```

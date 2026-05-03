@@ -16,8 +16,8 @@
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
+#[allow(dead_code)]
+
 use tree_sitter::{Parser, Tree, Node};
 
 use super::ln_ast::{

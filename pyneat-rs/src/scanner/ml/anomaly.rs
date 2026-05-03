@@ -11,6 +11,8 @@
 //!
 //! Copyright (C) 2026 PyNEAT Authors
 
+#[allow(dead_code)]
+
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 

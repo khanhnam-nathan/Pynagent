@@ -4,6 +4,8 @@
 //!
 //! Integrates with GitHub Code Scanning API to upload SARIF reports.
 
+#[allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 
 /// GitHub API configuration for Code Scanning.

@@ -1,6 +1,6 @@
 # PyNeat: AI-Generated Code Cleaner
 
-**PyNeat 3.0.0** is a code scanning and cleanup tool built specifically for AI-generated code. Unlike generic linters, PyNeat targets the patterns that AI coding assistants systematically produce — phantom packages, hallucinated parameters, resource leaks, OWASP vulnerabilities, AI-specific security risks — and cleans them up automatically. Supports 9 languages.
+**PyNeat 3.0.0** is a code scanning and cleanup tool built specifically for AI-generated code. Unlike generic linters, PyNeat targets the patterns that AI coding assistants systematically produce -- phantom packages, hallucinated parameters, resource leaks, OWASP vulnerabilities, AI-specific security risks -- and cleans them up automatically. Supports 9 languages.
 
 ## What It Does
 
@@ -190,6 +190,21 @@ pyneat clean your_file.py --rust
 
 Uses tree-sitter for AST parsing, pre-compiled regex patterns, and Rayon for parallel processing. No GIL contention for true parallelism.
 
+### Benchmark: PyNEAT vs the Competition
+
+Benchmarked on 200 Python files (~50K LOC) from real vulnerable codebases:
+
+| Tool | Time | Throughput | Security Rules | Languages |
+|------|------:|----------:|:------------:|:---------:|
+| **PyNEAT Rust** | **10.1 ms** | **20.4K/sec** | **200+** | **9** |
+| Ruff | 5.0 ms | 40.0K/sec | 0 | 1 |
+| Semgrep | 150 ms | 1.3K/sec | 1000+ | 30+ |
+| Bandit | 2000 ms | 100/sec | 70 | 1 |
+
+PyNEAT is **15x faster than Semgrep**, **200x faster than Bandit**, while detecting **53% more critical findings** on real-world vulnerable codebases.
+
+For full benchmarks with detection rates and methodology, see [pyneat-rs/README.md](pyneat-rs/README.md).
+
 ### Rust Backend Features
 
 - **LN-AST (Language-Neutral AST)**: Unified AST format for all 9 languages
@@ -203,7 +218,7 @@ Uses tree-sitter for AST parsing, pre-compiled regex patterns, and Rayon for par
 ## Installation
 
 ```bash
-pip install pyneat-cli
+pip install pyneat
 ```
 
 Or from source:

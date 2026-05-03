@@ -5,6 +5,8 @@
 //!
 //! Copyright (C) 2026 PyNEAT Authors
 
+#[allow(dead_code)]
+
 pub mod anomaly;
 
 #[allow(unused)]

@@ -16,6 +16,8 @@
 //! along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 
+#[allow(dead_code)]
+
 /// Generate a unified diff string.
 ///
 /// # Arguments

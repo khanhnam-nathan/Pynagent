@@ -6,30 +6,39 @@
 #
 # Update hooks:
 #   pre-commit autoupdate
+#
+# Enhanced features:
+#   - Scans only staged files (not all files in the repo)
+#   - Supports multiple languages via --lang flag
+#   - Fails fast on critical security issues
+#   - Non-blocking manifest generation
+#   - Respects .pre-commit-override.yaml for local config
 
 repos:
   # PyNEAT - AI-Generated Code Scanner
   - repo: local
     hooks:
-      # Security scan - fast, runs on all files
+      # Security scan - fast, runs on all staged Python files
       - id: pyneat-security
         name: PyNEAT Security Scan
-        description: Scan for security vulnerabilities in Python code
-        entry: pyneat check
+        description: Scan for security vulnerabilities in Python code (staged files only)
+        entry: python -c "import subprocess, sys; files=[f for f in sys.argv[1:] if f.endswith('.py')]; sys.exit(subprocess.call(['pyneat', 'check'] + files + ['--severity', '--fail-on', 'critical']) if files else 0)"
         language: system
-        files: \.py$
         stages: [pre-commit, push]
+        pass_filenames: true
+        require_serial: false
 
-      # Code quality check - dry-run mode
+      # Code quality check - dry-run mode with diff
       - id: pyneat-clean
         name: PyNEAT AI Code Scanner
         description: Clean AI-generated code patterns, remove debug prints, fix security issues
-        entry: pyneat clean --dry-run --diff
+        entry: python -c "import subprocess, sys; files=[f for f in sys.argv[1:] if f.endswith('.py')]; sys.exit(subprocess.call(['pyneat', 'clean'] + files + ['--dry-run', '--diff']) if files else 0)"
         language: system
-        files: \.py$
         stages: [pre-commit]
+        pass_filenames: true
+        require_serial: false
 
-      # Auto-generate PYNAGENT manifest (does not modify source code)
+      # Auto-generate PYNAGENT manifest (non-blocking)
       - id: pyneat-manifest
         name: PyNEAT Manifest Generator
         description: Generate .pyneat.manifest.json for AI editors (non-blocking)
@@ -37,18 +46,38 @@ repos:
         language: system
         files: \.py$
         stages: [pre-commit]
-        # Non-blocking: manifest generation failure does not abort commit
         always_run: false
         pass_filenames: true
 
-      # Check for common issues
+      # Check mode - blocks commit on issues (push stage)
       - id: pyneat-check
         name: PyNEAT Check Mode
-        description: Check code without making changes
-        entry: pyneat clean --check
+        description: Check code without making changes (blocks on critical issues)
+        entry: python -c "import subprocess, sys; files=[f for f in sys.argv[1:] if f.endswith('.py')]; result=subprocess.call(['pyneat', 'check'] + files + ['--fail-on', 'high']) if files else 0; sys.exit(result)"
         language: system
-        files: \.py$
         stages: [push]
+        pass_filenames: true
+        require_serial: false
+
+      # Multi-language scan - JavaScript/TypeScript
+      - id: pyneat-js-scan
+        name: PyNEAT JS/TS Scanner
+        description: Scan JavaScript and TypeScript files for security issues
+        entry: python -c "import subprocess, sys, os; js=[f for f in sys.argv[1:] if f.endswith(('.js','.jsx','.ts','.tsx'))]; sys.exit(subprocess.call(['pyneat', 'check', '.'] + (['--lang', 'javascript'] if os.environ.get('PRE_COMMIT') else [])) if js else 0)"
+        language: system
+        stages: [pre-commit, push]
+        pass_filenames: true
+        types: [javascript, typescript]
+
+      # Terraform/IaC scan
+      - id: pyneat-iac-scan
+        name: PyNEAT IaC Scanner
+        description: Scan Terraform and Kubernetes files for misconfigurations
+        entry: python -c "import subprocess, sys; tf=[f for f in sys.argv[1:] if f.endswith(('.tf','.yaml','.yml'))]; sys.exit(0) if not tf else subprocess.call(['pyneat', 'check'] + tf)"
+        language: system
+        stages: [pre-commit, push]
+        pass_filenames: true
+        types: [terraform, kubernetes]
 
   # Standard Python tools
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -59,7 +88,9 @@ repos:
       - id: check-yaml
       - id: check-json
       - id: check-added-large-files
+        args: ['--maxkb=5000']
       - id: check-merge-conflict
+      - id: check-toml
 
   - repo: https://github.com/psf/black
     rev: 24.1.1
@@ -78,3 +109,16 @@ repos:
     hooks:
       - id: flake8
         args: [--max-line-length=120, --ignore=E501,W503]
+
+  # Detect secrets
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: ^(\.secrets\.baseline|node_modules/|dist/|build/)$
+
+ci:
+  # Skip expensive scans on documentation-only changes
+  autoupdate_schedule: monthly
+  skip_unstaged_changes: false

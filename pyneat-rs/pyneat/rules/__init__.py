@@ -16,6 +16,13 @@ You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, contact: khanhnam.copywriting@gmail.com
+
+Available rule packages:
+  - Security rules: secrets.py, security.py, iac_security.py
+  - Quality rules: quality.py, refactoring.py
+  - Performance rules: performance.py
+  - Code cleaning rules: debug.py, comments.py, unused.py
+  - AI-specific rules: ai_bugs.py, duplication.py
 """
 
 from pyneat.rules.base import Rule

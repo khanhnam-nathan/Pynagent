@@ -2,6 +2,8 @@
 //!
 //! The engine performs intra-procedural data flow analysis using a worklist algorithm.
 
+#[allow(dead_code)]
+
 use std::collections::HashMap;
 
 use crate::scanner::ln_ast::LnAst;

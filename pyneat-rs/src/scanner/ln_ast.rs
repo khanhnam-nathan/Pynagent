@@ -18,6 +18,8 @@
 //! Supported languages: Python, JavaScript, TypeScript, Go, Java, Rust, C#, PHP, Ruby
 
 
+#[allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 
 /// Standard TODO/FIXME/HACK marker names used across all language parsers.

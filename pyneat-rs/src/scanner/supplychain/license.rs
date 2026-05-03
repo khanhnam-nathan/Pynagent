@@ -5,6 +5,8 @@
 //! - SPDX SBOM generation from lock files
 //! - CycloneDX SBOM generation from lock files
 
+#[allow(dead_code)]
+
 use crate::scanner::supplychain::lock_parser::LockPackage;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

@@ -3,6 +3,8 @@
 //! Each rule defines sources, sinks, sanitizers, and propagators.
 //! All rules work cross-language (Python, JavaScript, Go, Java, PHP, Ruby, C#, Rust).
 
+#[allow(dead_code)]
+
 use crate::scanner::taint::labels::{
     SanitizerPattern, SinkPosition, SourcePattern, TaintLabel, TaintPropagator, TaintRule,
     TaintSanitizer, TaintSink, TaintSource,

@@ -6,6 +6,8 @@
 //!
 //! Copyright (C) 2026 PyNEAT Authors
 
+#[allow(dead_code)]
+
 use crate::rules::base::{extract_snippet, Finding, Rule, Severity};
 use crate::scanner::tree_sitter::walk_tree;
 use once_cell::sync::Lazy;
