@@ -561,20 +561,4 @@ Contact: `khanhnam.copywriting@gmail.com`
 
 ## License
 
-Pynagent is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as published
-by the Free Software Foundation, either version 3 of the License,
-or (at your option) any later version.
-
-Pynagent is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-AGPLv3 with Commercial Exception: Commercial use of this software
-(e.g., bundling in paid products, SaaS services) is permitted,
-provided that you comply with the open source obligations under AGPLv3 §11.
-Contact the author for alternative licensing arrangements.
+GNU Affero General Public License v3 (AGPLv3). See [LICENSE](LICENSE) for the full text.
