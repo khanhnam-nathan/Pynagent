@@ -1,0 +1,117 @@
+# =============================================================================
+# Docker Compose for local development
+# =============================================================================
+# Use this to run the full Pynagent GitHub App stack locally.
+#
+# Start:  docker-compose up
+# Stop:   docker-compose down
+# Logs:   docker-compose logs -f
+#
+# Make sure to:
+#   1. Copy .env.example to .env and fill in your values
+#   2. Place your GitHub App private key as private-key.pem
+#   3. For webhook testing, use smee.io and set Smee_URL env var
+#
+# =============================================================================
+
+version: "3.9"
+
+services:
+  # ---------------------------------------------------------------------------
+  # Redis (for BullMQ job queue)
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: Pynagent-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ---------------------------------------------------------------------------
+  # Pynagent GitHub App (Probot server)
+  # ---------------------------------------------------------------------------
+  github-app:
+    build:
+      context: ./github_app
+      dockerfile: ../Dockerfile
+    container_name: Pynagent-github-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      # Redis
+      - REDIS_URL=redis://redis:6379
+      # GitHub App
+      - APP_ID=${APP_ID:?APP_ID is required}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:?WEBHOOK_SECRET is required}
+      # AMD Cloud
+      - AMD_API_KEY=${AMD_API_KEY}
+      - AMD_API_URL=${AMD_API_URL:-https://api.amd.com/v1}
+      - AMD_MODEL=${AMD_MODEL:-qwen-2.5-72b-instruct}
+      # Logging
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+    env_file:
+      - ./github_app/.env
+    volumes:
+      - ./github_app/private-key.pem:/app/private-key.pem:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ---------------------------------------------------------------------------
+  # Pynagent Bot Notification Server (FastAPI)
+  # ---------------------------------------------------------------------------
+  bot-server:
+    build:
+      context: .
+      dockerfile: ./Dockerfile.bot
+    container_name: Pynagent-bot-server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - Pynagent_WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+      - SMTP_TO=${SMTP_TO:-}
+    env_file:
+      - ./github_app/.env
+    depends_on:
+      - github-app
+
+  # ---------------------------------------------------------------------------
+  # Smee.io webhook forwarder (for local development)
+  # ---------------------------------------------------------------------------
+  # smee:
+  #   image: node:18-alpine
+  #   container_name: Pynagent-smee
+  #   restart: unless-stopped
+  #   command: >
+  #     sh -c 'npm install -g smee-client && smee --url ${SMEE_URL:-} --path /event-handler --port 3000 --target http://github-app:3000'
+  #   ports:
+  #     - "3001:3001"
+  #   environment:
+  #     - SMEE_URL=${SMEE_URL:-}
+
+volumes:
+  redis_data:

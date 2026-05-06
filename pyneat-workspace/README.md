@@ -1,19 +1,19 @@
-# PyNEAT Workspace
+# Pynagent Workspace
 
 This workspace contains two Rust crates:
 
-1. **pyneat-core** (AGPL-3.0) - Open source core scanner
-2. **pyneat-pro-engine** (PROPRIETARY) - Advanced proprietary features
+1. **Pynagent-core** (AGPL-3.0) - Open source core scanner
+2. **Pynagent-pro-engine** (PROPRIETARY) - Advanced proprietary features
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    PyNEAT Workspace                         │
+│                    Pynagent Workspace                         │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  ┌─────────────────────────────────────────────────────┐ │
-│  │  pyneat-core (AGPL-3.0)                            │ │
+│  │  Pynagent-core (AGPL-3.0)                            │ │
 │  │  ├── Basic linting rules                            │ │
 │  │  ├── Tree-sitter AST parsing                        │ │
 │  │  ├── Multi-language support                         │ │
@@ -26,7 +26,7 @@ This workspace contains two Rust crates:
 │                           ▲                               │
 │                           │                               │
 │  ┌─────────────────────────────────────────────────────┐ │
-│  │  pyneat-pro-engine (PROPRIETARY)                   │ │
+│  │  Pynagent-pro-engine (PROPRIETARY)                   │ │
 │  │  ├── Semantic analysis engine                      │ │
 │  │  ├── Type validation (mypy/pyright)               │ │
 │  │  ├── AI bug detection                             │ │
@@ -42,12 +42,12 @@ This workspace contains two Rust crates:
 
 ### Build Core Only
 ```bash
-cargo build -p pyneat-core --release
+cargo build -p Pynagent-core --release
 ```
 
 ### Build Pro Engine (requires license)
 ```bash
-cargo build -p pyneat-pro-engine --release
+cargo build -p Pynagent-pro-engine --release
 ```
 
 ### Build Both
@@ -59,29 +59,29 @@ cargo build --release
 
 ### Core Only (Open Source)
 ```bash
-./target/release/pyneat-core scan ./src
+./target/release/Pynagent-core scan ./src
 
 # List available rules
-./target/release/pyneat-core list-rules
+./target/release/Pynagent-core list-rules
 
 # Check Pro Engine status
-./target/release/pyneat-core pro-status
+./target/release/Pynagent-core pro-status
 ```
 
 ### With Pro Engine
-If `pyneat-pro-engine` binary is installed, it will be automatically detected and used for advanced features.
+If `Pynagent-pro-engine` binary is installed, it will be automatically detected and used for advanced features.
 
 ## License
 
-- **pyneat-core**: AGPL-3.0-or-later
-- **pyneat-pro-engine**: PROPRIETARY (requires separate license)
+- **Pynagent-core**: AGPL-3.0-or-later
+- **Pynagent-pro-engine**: PROPRIETARY (requires separate license)
 
 ## Directory Structure
 
 ```
-pyneat-workspace/
+Pynagent-workspace/
 ├── Cargo.toml              # Workspace configuration
-├── pyneat-core/            # Open source core
+├── Pynagent-core/            # Open source core
 │   ├── Cargo.toml
 │   ├── src/
 │   │   ├── lib.rs        # Library exports
@@ -90,7 +90,7 @@ pyneat-workspace/
 │   │   └── pro_engine.rs  # Pro Engine integration
 │   └── ...
 │
-└── pyneat-pro-engine/     # Proprietary engine
+└── Pynagent-pro-engine/     # Proprietary engine
     ├── Cargo.toml
     ├── src/
     │   ├── main.rs        # Binary entry point

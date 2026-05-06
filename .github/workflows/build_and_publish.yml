@@ -1,4 +1,4 @@
-# PyNEAT Build and Publish Workflow
+# Pynagent Build and Publish Workflow
 #
 # Builds cross-platform Rust extension wheels and publishes to PyPI on release tags.
 # Also runs tests on all supported Python versions.
@@ -56,13 +56,13 @@ jobs:
       - name: Build wheels
         run: |
           maturin build --release --out dist --interpreter python${{ matrix.python-version }}
-        working-directory: pyneat-rs
+        working-directory: pynagent
 
       - name: Upload wheels artifact
         uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.os }}-py${{ matrix.python-version }}
-          path: pyneat-rs/target/wheels/*.whl
+          path: pynagent/target/wheels/*.whl
           retention-days: 5
 
   # ========================================
@@ -82,13 +82,13 @@ jobs:
 
       - name: Build sdist
         run: maturin build --release --sdist --out dist
-        working-directory: pyneat-rs
+        working-directory: pynagent
 
       - name: Upload sdist artifact
         uses: actions/upload-artifact@v4
         with:
           name: sdist
-          path: pyneat-rs/target/wheels/*.tar.gz
+          path: pynagent/target/wheels/*.tar.gz
           retention-days: 5
 
   # ========================================
@@ -122,7 +122,7 @@ jobs:
         run: pip install wheels/*.whl ".[dev]"
 
       - name: Verify Rust extension loads
-        run: python -c "import pyneat_rs; print('pyneat_rs version:', pyneat_rs.version())"
+        run: python -c "import Pynagent_rs; print('Pynagent_rs version:', Pynagent_rs.version())"
 
       - name: Run tests
         run: python -m pytest tests/ -v --tb=short
@@ -138,7 +138,7 @@ jobs:
 
     environment:
       name: pypi
-      url: https://pypi.org/project/pyneat-cli/
+      url: https://pypi.org/project/Pynagent-cli/
 
     steps:
       - name: Checkout code
@@ -171,7 +171,7 @@ jobs:
 
     environment:
       name: testpypi
-      url: https://test.pypi.org/project/pyneat-cli/
+      url: https://test.pypi.org/project/Pynagent-cli/
 
     steps:
       - name: Checkout code

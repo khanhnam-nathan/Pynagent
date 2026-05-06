@@ -1,6 +1,6 @@
-# PyNeat Quick Start Guide
+# Pynagent Quick Start Guide
 
-Get up and running with PyNeat in 5 minutes!
+Get up and running with Pynagent in 5 minutes!
 
 ## Prerequisites
 
@@ -12,14 +12,14 @@ Get up and running with PyNeat in 5 minutes!
 ### From PyPI (Recommended)
 
 ```bash
-pip install pyneat
+pip install Pynagent
 ```
 
 ### From Source
 
 ```bash
-git clone https://github.com/khanhnam-nathan/Pyneat.git
-cd Pyneat
+git clone https://github.com/khanhnam-nathan/Pynagent.git
+cd Pynagent
 pip install -e .
 ```
 
@@ -28,9 +28,9 @@ pip install -e .
 For better performance on large codebases:
 
 ```bash
-pip install pyneat[rust]
+pip install Pynagent[rust]
 # Or install from source
-cd pyneat-rs
+cd pynagent
 cargo build --release
 ```
 
@@ -39,33 +39,33 @@ cargo build --release
 ### 1. Scan a File for Issues
 
 ```bash
-pyneat check your_file.py
+Pynagent check your_file.py
 ```
 
 ### 2. Clean AI-Generated Code
 
 ```bash
 # Dry run (preview changes)
-pyneat clean your_file.py --dry-run --diff
+Pynagent clean your_file.py --dry-run --diff
 
 # Apply fixes in-place
-pyneat clean your_file.py --in-place
+Pynagent clean your_file.py --in-place
 ```
 
 ### 3. Security Scan
 
 ```bash
-pyneat check your_file.py --severity
+Pynagent check your_file.py --severity
 ```
 
 ### 4. Multi-Language Support
 
 ```bash
 # Scan entire directory
-pyneat check ./src
+Pynagent check ./src
 
 # Specify language
-pyneat clean script.py --lang python
+Pynagent clean script.py --lang python
 ```
 
 ### 5. Use with Pre-commit Hooks
@@ -78,9 +78,9 @@ pre-commit install
 repos:
   - repo: local
     hooks:
-      - id: pyneat-security
-        name: PyNeat Security Scan
-        entry: pyneat check
+      - id: Pynagent-security
+        name: Pynagent Security Scan
+        entry: Pynagent check
         language: system
         types: [python]
         stages: [pre-commit]
@@ -91,7 +91,7 @@ repos:
 ### Basic Scanning
 
 ```python
-from pyneat import clean_code, analyze_code
+from Pynagent import clean_code, analyze_code
 
 # Clean code string (auto-fix x != None -> x is not None)
 result = clean_code("x != None")
@@ -107,8 +107,8 @@ for issue in report['issues']:
 
 ```python
 from pathlib import Path
-from pyneat import RuleEngine, CodeFile, RuleConfig
-from pyneat.rules import IsNotNoneRule, DebugCleaner
+from Pynagent import RuleEngine, CodeFile, RuleConfig
+from Pynagent.rules import IsNotNoneRule, DebugCleaner
 
 engine = RuleEngine(rules=[
     IsNotNoneRule(RuleConfig(enabled=True)),
@@ -126,8 +126,8 @@ print(f"Changes: {result.changes_made}")
 ### Security Scanning
 
 ```python
-from pyneat import RuleEngine, CodeFile, RuleConfig
-from pyneat.rules import SecurityScannerRule
+from Pynagent import RuleEngine, CodeFile, RuleConfig
+from Pynagent.rules import SecurityScannerRule
 
 engine = RuleEngine(rules=[SecurityScannerRule(RuleConfig(enabled=True))])
 result = engine.process_code_file(CodeFile(path=Path("app.py"), content=code))
@@ -139,7 +139,7 @@ for finding in result.changes_made:
 
 ```python
 from pathlib import Path
-from pyneat import clean_file
+from Pynagent import clean_file
 
 result = clean_file(Path("my_script.py"), in_place=True, backup=True)
 if result.success:
@@ -150,14 +150,14 @@ if result.success:
 
 ```python
 from pathlib import Path
-from pyneat.core.manifest import (
+from Pynagent.core.manifest import (
     export_to_sarif,
     export_to_junit_xml,
     export_to_gitlab_sast,
     export_to_html_report,
 )
-from pyneat import RuleEngine, CodeFile, RuleConfig
-from pyneat.rules import SecurityScannerRule
+from Pynagent import RuleEngine, CodeFile, RuleConfig
+from Pynagent.rules import SecurityScannerRule
 
 # Analyze and collect markers
 engine = RuleEngine(rules=[SecurityScannerRule(RuleConfig(enabled=True))])
@@ -170,25 +170,25 @@ sarif = export_to_sarif(result.agent_markers, Path("app.py"))
 junit = export_to_junit_xml(result.agent_markers, Path("app.py"))
 
 # HTML report
-html = export_to_html_report(result.agent_markers, title="PyNEAT Scan")
+html = export_to_html_report(result.agent_markers, title="Pynagent Scan")
 ```
 
 ## Configuration
 
 ### Package Levels
 
-PyNeat has three package levels for different safety needs:
+Pynagent has three package levels for different safety needs:
 
 | Package | Use Case | Command |
 |---------|----------|---------|
-| `safe` (default) | Zero-risk fixes | `pyneat clean file.py` |
-| `conservative` | Cleaner code | `pyneat clean file.py --package conservative` |
-| `destructive` | Full cleanup | `pyneat clean file.py --package destructive` |
+| `safe` (default) | Zero-risk fixes | `Pynagent clean file.py` |
+| `conservative` | Cleaner code | `Pynagent clean file.py --package conservative` |
+| `destructive` | Full cleanup | `Pynagent clean file.py --package destructive` |
 
 ### Rule Configuration
 
 ```yaml
-# pyneat.yaml
+# Pynagent.yaml
 rules:
   enabled:
     - IsNotNoneRule
@@ -201,11 +201,11 @@ rules:
 
 ```bash
 # Ignore a specific rule
-pyneat clean file.py --ignore SecurityScannerRule
+Pynagent clean file.py --ignore SecurityScannerRule
 
 # Ignore specific lines
-# pyneat: ignore-line
-x != None  # pyneat: ignore-line
+# Pynagent: ignore-line
+x != None  # Pynagent: ignore-line
 ```
 
 ## Common Workflows
@@ -214,10 +214,10 @@ x != None  # pyneat: ignore-line
 
 ```yaml
 # GitHub Actions
-- name: PyNeat Security Scan
+- name: Pynagent Security Scan
   run: |
-    pip install pyneat
-    pyneat report . -f sarif -o results.sarif
+    pip install Pynagent
+    Pynagent report . -f sarif -o results.sarif
 ```
 
 ### Git Pre-commit Hook
@@ -225,26 +225,26 @@ x != None  # pyneat: ignore-line
 ```bash
 # .git/hooks/pre-commit
 #!/bin/bash
-pyneat check $(git diff --cached --name-only --diff-filter=ACM) || exit 1
+Pynagent check $(git diff --cached --name-only --diff-filter=ACM) || exit 1
 ```
 
 ### IDE Integration
 
-VSCode: Install the PyNeat extension from the Marketplace.
+VSCode: Install the Pynagent extension from the Marketplace.
 
 ## Troubleshooting
 
 ### Installation Issues
 
-**Problem:** `pyneat: command not found`
+**Problem:** `Pynagent: command not found`
 
 ```bash
 # Solution: Reinstall
-pip uninstall pyneat
-pip install pyneat
+pip uninstall Pynagent
+pip install Pynagent
 
 # Or use python -m
-python -m pyneat check file.py
+python -m Pynagent check file.py
 ```
 
 **Problem:** Rust backend not working
@@ -254,7 +254,7 @@ python -m pyneat check file.py
 rustc --version
 
 # Rebuild
-cd pyneat-rs
+cd pynagent
 cargo build --release
 ```
 
@@ -269,7 +269,7 @@ cargo build --release
 **Problem:** Too many false positives
 
 - Use `--package safe` for fewer aggressive rules
-- Configure specific rules in `pyneat.yaml`
+- Configure specific rules in `Pynagent.yaml`
 - Use `--ignore` for specific rules
 
 ## Next Steps

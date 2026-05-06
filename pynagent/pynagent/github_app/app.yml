@@ -1,0 +1,26 @@
+# Pynagent GitHub App — Probot Configuration
+#
+# See: https://probot.github.io/docs/configuration/
+
+# The ID of the GitHub App (from app settings page)
+app:
+  id: ${APP_ID}
+
+# The private key for the GitHub App (set PRIVATE_KEY_PATH env var instead)
+# private_key_path: ./private-key.pem
+
+# Webhook:
+webhook:
+  # The secret used to verify webhook signatures
+  secret: ${WEBHOOK_SECRET}
+
+  # Path to the webhook server endpoint (default: /event-handler)
+  # path: /webhooks
+
+# A logger must be a pinfo/wiston-compatible logger
+log:
+  level: ${LOG_LEVEL:-info}
+  format: ${LOG_FORMAT:-json}
+
+# For local development, set GITHUB_WEBHOOK_URL to your smee.io channel:
+# GITHUB_WEBHOOK_URL=https://smee.io/your-channel-id

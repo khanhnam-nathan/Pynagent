@@ -1,4 +1,4 @@
-name: PyNEAT SAST (GitHub Advanced Security)
+name: Pynagent SAST (GitHub Advanced Security)
 
 on:
   push:
@@ -31,8 +31,8 @@ permissions:
   actions: read
 
 jobs:
-  pyneat-scan:
-    name: PyNEAT Security Scan
+  Pynagent-scan:
+    name: Pynagent Security Scan
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -43,31 +43,31 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install PyNEAT
-        run: pip install pyneat-cli
+      - name: Install Pynagent
+        run: pip install Pynagent-cli
 
-      - name: Run PyNEAT Scan
+      - name: Run Pynagent Scan
         run: |
-          pyneat check \
+          Pynagent check \
             --format sarif \
-            --output pyneat-results.sarif \
+            --output Pynagent-results.sarif \
             --severity info \
             .
 
       - name: Upload SARIF to GitHub Code Scanning
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: pyneat-results.sarif
-          category: "pyneat-sast"
+          sarif_file: Pynagent-results.sarif
+          category: "Pynagent-sast"
 
       - name: Summary
         run: |
-          TOTAL=$(cat pyneat-results.sarif | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('runs',[{}])[0].get('results',[])))" 2>/dev/null || echo "0")
-          echo "## PyNEAT Security Scan Results" >> $GITHUB_STEP_SUMMARY
+          TOTAL=$(cat Pynagent-results.sarif | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('runs',[{}])[0].get('results',[])))" 2>/dev/null || echo "0")
+          echo "## Pynagent Security Scan Results" >> $GITHUB_STEP_SUMMARY
           echo "- Total findings: $TOTAL" >> $GITHUB_STEP_SUMMARY
 
-  pyneat-rs-scan:
-    name: PyNEAT-RS Native Scan
+  pynagent-scan:
+    name: pynagent Native Scan
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -78,22 +78,22 @@ jobs:
         with:
           profile: minimal
 
-      - name: Build PyNEAT-RS
+      - name: Build pynagent
         run: |
-          cd pyneat-rs
+          cd pynagent
           cargo build --release
         env:
           CARGO_INCREMENTAL: 0
 
-      - name: Run PyNEAT-RS Scan
+      - name: Run pynagent Scan
         run: |
-          ./pyneat-rs/target/release/pyneat scan \
+          ./pynagent/target/release/Pynagent scan \
             --format sarif \
-            --output pyneat-rs-results.sarif \
+            --output pynagent-results.sarif \
             .
 
       - name: Upload SARIF
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: pyneat-rs-results.sarif
-          category: "pyneat-rs-sast"
+          sarif_file: pynagent-results.sarif
+          category: "pynagent-sast"

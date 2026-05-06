@@ -1,9 +1,9 @@
 {
-  "name": "pyneat",
-  "displayName": "PyNEAT Security Scanner",
+  "name": "Pynagent",
+  "displayName": "Pynagent Security Scanner",
   "description": "AI-generated code security scanner with real-time diagnostics, quick fixes, and AI agent integration",
   "version": "3.0.0",
-  "publisher": "pyneat",
+  "publisher": "Pynagent",
   "engines": {
     "vscode": "^1.92.0"
   },
@@ -23,109 +23,109 @@
     "onLanguage:python",
     "onLanguage:javascript",
     "onLanguage:typescript",
-    "onCommand:pyneat.checkFile",
-    "onCommand:pyneat.sendContext",
-    "onCommand:pyneat.ignoreIssue",
-    "onCommand:pyneat.applyFix",
-    "onCommand:pyneat.addContext"
+    "onCommand:Pynagent.checkFile",
+    "onCommand:Pynagent.sendContext",
+    "onCommand:Pynagent.ignoreIssue",
+    "onCommand:Pynagent.applyFix",
+    "onCommand:Pynagent.addContext"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "pyneat.checkFile",
-        "title": "PyNEAT: Check This File",
-        "category": "PyNEAT",
+        "command": "Pynagent.checkFile",
+        "title": "Pynagent: Check This File",
+        "category": "Pynagent",
         "icon": "$(search)"
       },
       {
-        "command": "pyneat.checkWorkspace",
-        "title": "PyNEAT: Check Workspace",
-        "category": "PyNEAT",
+        "command": "Pynagent.checkWorkspace",
+        "title": "Pynagent: Check Workspace",
+        "category": "Pynagent",
         "icon": "$(folder-opened)"
       },
       {
-        "command": "pyneat.sendContext",
-        "title": "PyNEAT: Send Issue to AI Agent",
-        "category": "PyNEAT",
+        "command": "Pynagent.sendContext",
+        "title": "Pynagent: Send Issue to AI Agent",
+        "category": "Pynagent",
         "icon": "$(robot)"
       },
       {
-        "command": "pyneat.ignoreIssue",
-        "title": "PyNEAT: Ignore This Issue",
-        "category": "PyNEAT",
+        "command": "Pynagent.ignoreIssue",
+        "title": "Pynagent: Ignore This Issue",
+        "category": "Pynagent",
         "icon": "$(comment-discussion)"
       },
       {
-        "command": "pyneat.applyFix",
-        "title": "PyNEAT: Apply Auto-Fix",
-        "category": "PyNEAT",
+        "command": "Pynagent.applyFix",
+        "title": "Pynagent: Apply Auto-Fix",
+        "category": "Pynagent",
         "icon": "$(check-all)"
       },
       {
-        "command": "pyneat.addContext",
-        "title": "PyNEAT: Add Context Comment",
-        "category": "PyNEAT",
+        "command": "Pynagent.addContext",
+        "title": "Pynagent: Add Context Comment",
+        "category": "Pynagent",
         "icon": "$(comment)"
       }
     ],
     "configuration": {
-      "title": "PyNEAT",
+      "title": "Pynagent",
       "properties": {
-        "pyneat.enableRealTime": {
+        "Pynagent.enableRealTime": {
           "type": "boolean",
           "default": true,
           "description": "Enable real-time diagnostics as you type (may impact performance)",
           "scope": "resource"
         },
-        "pyneat.scanOnSave": {
+        "Pynagent.scanOnSave": {
           "type": "boolean",
           "default": true,
           "description": "Run security scan on file save",
           "scope": "resource"
         },
-        "pyneat.pythonPath": {
+        "Pynagent.pythonPath": {
           "type": "string",
           "default": "python",
-          "description": "Path to Python interpreter with PyNEAT installed",
+          "description": "Path to Python interpreter with Pynagent installed",
           "scope": "machine-overridable"
         },
-        "pyneat.rulesPackage": {
+        "Pynagent.rulesPackage": {
           "type": "string",
           "enum": ["safe", "conservative", "destructive"],
           "default": "safe",
           "description": "Rule package level: safe (default), conservative (adds cleanup), destructive (aggressive)",
           "scope": "resource"
         },
-        "pyneat.severityThreshold": {
+        "Pynagent.severityThreshold": {
           "type": "string",
           "enum": ["info", "low", "medium", "high", "critical"],
           "default": "info",
           "description": "Minimum severity level to show diagnostics",
           "scope": "resource"
         },
-        "pyneat.enableRustBackend": {
+        "Pynagent.enableRustBackend": {
           "type": "boolean",
           "default": true,
           "description": "Use Rust backend for faster scanning (if installed)",
           "scope": "machine-overridable"
         },
-        "pyneat.showHoverInfo": {
+        "Pynagent.showHoverInfo": {
           "type": "boolean",
           "default": true,
           "description": "Show detailed hover information with fix options",
           "scope": "resource"
         },
-        "pyneat.autoFixOnSave": {
+        "Pynagent.autoFixOnSave": {
           "type": "boolean",
           "default": false,
           "description": "Automatically apply safe fixes on file save (requires confirmation)",
           "scope": "resource"
         },
-        "pyneat.workspaceIgnore": {
+        "Pynagent.workspaceIgnore": {
           "type": "string",
-          "default": ".pyneatignore",
-          "description": "Path to PyNEAT ignore file",
+          "default": ".Pynagentignore",
+          "description": "Path to Pynagent ignore file",
           "scope": "resource"
         }
       }
@@ -133,44 +133,44 @@
     "menus": {
       "editor/context": [
         {
-          "command": "pyneat.checkFile",
+          "command": "Pynagent.checkFile",
           "when": "resourceLangId == python || resourceLangId == javascript || resourceLangId == typescript",
           "group": "2_modification@10"
         },
         {
-          "command": "pyneat.applyFix",
-          "when": "pyneatHasFix && resourceLangId == python",
+          "command": "Pynagent.applyFix",
+          "when": "PynagentHasFix && resourceLangId == python",
           "group": "2_modification@11"
         },
         {
-          "command": "pyneat.ignoreIssue",
-          "when": "pyneatHasIssue && resourceLangId == python",
+          "command": "Pynagent.ignoreIssue",
+          "when": "PynagentHasIssue && resourceLangId == python",
           "group": "2_modification@12"
         },
         {
-          "command": "pyneat.sendContext",
-          "when": "pyneatHasIssue && resourceLangId == python",
+          "command": "Pynagent.sendContext",
+          "when": "PynagentHasIssue && resourceLangId == python",
           "group": "2_modification@13"
         },
         {
-          "command": "pyneat.addContext",
-          "when": "pyneatHasIssue && resourceLangId == python",
+          "command": "Pynagent.addContext",
+          "when": "PynagentHasIssue && resourceLangId == python",
           "group": "2_modification@14"
         }
       ]
     },
     "keybindings": [
       {
-        "command": "pyneat.applyFix",
+        "command": "Pynagent.applyFix",
         "key": "ctrl+shift+f",
         "mac": "cmd+shift+f",
-        "when": "pyneatHasFix"
+        "when": "PynagentHasFix"
       },
       {
-        "command": "pyneat.sendContext",
+        "command": "Pynagent.sendContext",
         "key": "ctrl+shift+a",
         "mac": "cmd+shift+a",
-        "when": "pyneatHasIssue"
+        "when": "PynagentHasIssue"
       }
     ]
   },
@@ -196,7 +196,7 @@
   "dependencies": {},
   "repository": {
     "type": "git",
-    "url": "https://github.com/khanhnam-nathan/Pyneat.git"
+    "url": "https://github.com/khanhnam-nathan/Pynagent.git"
   },
   "license": "AGPL-3.0-or-later"
 }

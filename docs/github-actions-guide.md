@@ -1,11 +1,11 @@
 # GitHub Actions Integration Guide
 
-Guide for integrating PyNeat with GitHub Actions for CI/CD workflows.
+Guide for integrating Pynagent with GitHub Actions for CI/CD workflows.
 
 ## Basic Security Scan
 
 ```yaml
-name: PyNeat Security Scan
+name: Pynagent Security Scan
 
 on: [push, pull_request]
 
@@ -20,11 +20,11 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install PyNeat
-        run: pip install pyneat
+      - name: Install Pynagent
+        run: pip install Pynagent
 
       - name: Run security scan
-        run: pyneat check . -f sarif -o results.sarif
+        run: Pynagent check . -f sarif -o results.sarif
 
       - name: Upload results to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
@@ -34,12 +34,12 @@ jobs:
 
 ## SARIF Integration with Code Scanning
 
-GitHub's Code Scanning integrates with PyNeat through SARIF format.
+GitHub's Code Scanning integrates with Pynagent through SARIF format.
 
 ### Full Example
 
 ```yaml
-name: PyNeat Security
+name: Pynagent Security
 
 on:
   push:
@@ -48,7 +48,7 @@ on:
     branches: [main]
 
 jobs:
-  pyneat-scan:
+  Pynagent-scan:
     name: Security Scan
     runs-on: ubuntu-latest
     permissions:
@@ -65,23 +65,23 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install PyNeat
+      - name: Install Pynagent
         run: |
-          pip install pyneat
+          pip install Pynagent
 
-      - name: Run PyNeat scan
+      - name: Run Pynagent scan
         run: |
-          pyneat check . \
+          Pynagent check . \
             -f sarif \
-            -o pyneat-results.sarif \
+            -o Pynagent-results.sarif \
             --fail-on critical
 
       - name: Upload SARIF to GitHub
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
-          sarif_file: pyneat-results.sarif
-          category: pyneat/security-scan
+          sarif_file: Pynagent-results.sarif
+          category: Pynagent/security-scan
 
       - name: Fail on critical issues
         if: failure()
@@ -108,15 +108,15 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install PyNeat
-        run: pip install pyneat
+      - name: Install Pynagent
+        run: pip install Pynagent
 
       - name: Check code quality
-        run: pyneat clean . --check --diff
+        run: Pynagent clean . --check --diff
 
       - name: Show changes
         if: always()
-        run: pyneat clean . --dry-run --diff || true
+        run: Pynagent clean . --dry-run --diff || true
 ```
 
 ## Pre-commit Style Checks
@@ -143,7 +143,7 @@ jobs:
       - name: Install pre-commit
         run: pip install pre-commit
 
-      - name: Install PyNeat hooks
+      - name: Install Pynagent hooks
         run: pre-commit install-hooks
 
       - name: Run pre-commit
@@ -178,17 +178,17 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install PyNeat
-        run: pip install pyneat
+      - name: Install Pynagent
+        run: pip install Pynagent
 
       - name: Run scan
-        run: pyneat check . -f sarif -o scan.sarif
+        run: Pynagent check . -f sarif -o scan.sarif
 
       - name: Upload results
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: scan.sarif
-          category: pyneat-weekly-scan
+          category: Pynagent-weekly-scan
 
       - name: Create issue for critical issues
         if: contains(steps.scan.outputs.critical_issues, 'true')
@@ -226,12 +226,12 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install PyNeat
-        run: pip install pyneat
+      - name: Install Pynagent
+        run: pip install Pynagent
 
       - name: Scan ${{ matrix.language }}
         run: |
-          pyneat check . \
+          Pynagent check . \
             --lang ${{ matrix.language }} \
             -f sarif \
             -o results-${{ matrix.language }}.sarif
@@ -240,7 +240,7 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: results-${{ matrix.language }}.sarif
-          category: pyneat/${{ matrix.language }}
+          category: Pynagent/${{ matrix.language }}
 ```
 
 ## Performance Benchmarks
@@ -266,12 +266,12 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install PyNeat
+      - name: Install Pynagent
         run: pip install -e .
 
       - name: Run benchmarks
         run: |
-          cd pyneat-rs
+          cd pynagent
           python benchmark.py --files 200 --iterations 5
 
       - name: Upload results
@@ -303,14 +303,14 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install PyNeat
+      - name: Install Pynagent
         run: pip install -e .
 
       - name: Run tests
         run: pytest
 
-      - name: Run PyNeat scan
-        run: pyneat clean . --check
+      - name: Run Pynagent scan
+        run: Pynagent clean . --check
 ```
 
 ## GitLab SAST Export
@@ -319,12 +319,12 @@ For GitLab CI integration, use the SARIF format which GitLab SAST natively suppo
 
 ```yaml
 # .gitlab-ci.yml
-pyneat-sast:
+Pynagent-sast:
   image: python:3.12
   before_script:
-    - pip install pyneat
+    - pip install Pynagent
   script:
-    - pyneat report . -f sarif -o gl-sast-report.sarif
+    - Pynagent report . -f sarif -o gl-sast-report.sarif
   artifacts:
     reports:
       sast: gl-sast-report.sarif
@@ -333,7 +333,7 @@ pyneat-sast:
 Alternatively, export directly via Python API for full control:
 
 ```python
-from pyneat.core.manifest import export_to_gitlab_sast
+from Pynagent.core.manifest import export_to_gitlab_sast
 
 gitlab = export_to_gitlab_sast(markers, project="my-project")
 ```
@@ -358,18 +358,18 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pyneat
+          pip install Pynagent
           pip install sonar-scanner
 
-      - name: Run PyNeat scan
-        run: pyneat check . --format sonarqube --output sonarqube-results.json
+      - name: Run Pynagent scan
+        run: Pynagent check . --format sonarqube --output sonarqube-results.json
 
       - name: SonarQube analysis
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
           sonar-scanner \
-            -Dsonar.projectKey=pyneat-scan \
+            -Dsonar.projectKey=Pynagent-scan \
             -Dsonar.python.sources=. \
             -Dsonar.externalIssuesReportPaths=sonarqube-results.json
 ```
@@ -388,9 +388,9 @@ jobs:
 
 | Variable | Description |
 |----------|-------------|
-| `PYNEAT_PACKAGE` | Package level (safe/conservative/destructive) |
-| `PYNEAT_LANG` | Default language to scan |
-| `PYNEAT_CONFIG` | Path to config file |
+| `Pynagent_PACKAGE` | Package level (safe/conservative/destructive) |
+| `Pynagent_LANG` | Default language to scan |
+| `Pynagent_CONFIG` | Path to config file |
 
 ## Secrets
 

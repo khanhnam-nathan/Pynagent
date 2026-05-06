@@ -1,6 +1,6 @@
-# PyNEAT Neovim LSP Plugin
+# Pynagent Neovim LSP Plugin
 
-A Language Server Protocol (LSP) plugin for Neovim that provides real-time security scanning with PyNEAT.
+A Language Server Protocol (LSP) plugin for Neovim that provides real-time security scanning with Pynagent.
 
 ## Features
 
@@ -18,17 +18,17 @@ A Language Server Protocol (LSP) plugin for Neovim that provides real-time secur
 ### Using packer.nvim
 
 ```lua
-use { 'pyneat/pyneat', opt = true, run = 'pip install pyneat-cli' }
+use { 'Pynagent/Pynagent', opt = true, run = 'pip install Pynagent-cli' }
 ```
 
 ### Using lazy.nvim
 
 ```lua
 {
-  'pyneat/pyneat',
+  'Pynagent/Pynagent',
   ft = { 'python', 'javascript', 'typescript' },
   config = function()
-    require('pyneat_lsp').setup({
+    require('Pynagent_lsp').setup({
       python_path = 'python',
       severity_threshold = 'info',
       enable_real_time = true,
@@ -39,12 +39,12 @@ use { 'pyneat/pyneat', opt = true, run = 'pip install pyneat-cli' }
 
 ### Manual Installation
 
-1. Copy `nvim-lsp/pyneat_lsp.lua` to `~/.config/nvim/lua/pyneat_lsp.lua`
+1. Copy `nvim-lsp/Pynagent_lsp.lua` to `~/.config/nvim/lua/Pynagent_lsp.lua`
 2. Add to your `init.lua` or `init.vim`:
 
 ```lua
 lua << EOF
-require('pyneat_lsp').setup({
+require('Pynagent_lsp').setup({
   python_path = 'python',
   severity_threshold = 'info',
   enable_real_time = true,
@@ -56,7 +56,7 @@ EOF
 
 ```lua
 lua << EOF
-require('pyneat_lsp').setup({
+require('Pynagent_lsp').setup({
   -- Path to Python interpreter
   python_path = 'python',
 
@@ -80,8 +80,8 @@ require('pyneat_lsp').setup({
 
   -- LSP server configuration (optional)
   server = {
-    cmd = { 'pyneat', 'server' },
-    name = 'pyneat',
+    cmd = { 'Pynagent', 'server' },
+    name = 'Pynagent',
   },
 })
 EOF
@@ -91,9 +91,9 @@ EOF
 
 | Command | Description |
 |---------|-------------|
-| `:PyNEATScan [file]` | Scan a file for security issues |
-| `:PyNEATWorkspace` | Scan entire workspace |
-| `:PyNEATClear` | Clear diagnostics for current buffer |
+| `:PynagentScan [file]` | Scan a file for security issues |
+| `:PynagentWorkspace` | Scan entire workspace |
+| `:PynagentClear` | Clear diagnostics for current buffer |
 
 ## Keymaps
 
@@ -110,11 +110,11 @@ For telescope.nvim users:
 
 ```lua
 local telescope = require('telescope')
-telescope.load_extension('pyneat')
+telescope.load_extension('Pynagent')
 
 -- Find files with security issues
 vim.keymap.set('n', '<leader>tp', function()
-  telescope.extensions.pyneat.find_files()
+  telescope.extensions.Pynagent.find_files()
 end)
 ```
 
@@ -123,13 +123,13 @@ end)
 1. Increase `debounce_delay` if scanning is too slow
 2. Use `severity_threshold = 'medium'` to reduce noise
 3. Disable `enable_real_time` for large files
-4. Use pyneat-rs binary for faster native scanning
+4. Use pynagent binary for faster native scanning
 
 ## Requirements
 
 - Neovim 0.8+
 - Python 3.10+
-- pyneat-cli (`pip install pyneat-cli`)
-- Optional: pyneat-rs binary for faster native scanning
+- Pynagent-cli (`pip install Pynagent-cli`)
+- Optional: pynagent binary for faster native scanning
 - Optional: nvim-lspconfig for LSP server integration
 - Optional: telescope.nvim for file finding

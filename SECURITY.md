@@ -1,4 +1,4 @@
-# Security Policy for PyNeat
+# Security Policy for Pynagent
 
 ## Supported Versions
 
@@ -11,7 +11,7 @@ Currently, only the latest major release branch is supported with security updat
 
 ## Reporting a Vulnerability
 
-Security is a top priority for PyNeat. If you discover a security vulnerability within this project, please **DO NOT** disclose it publicly by opening a GitHub Issue.
+Security is a top priority for Pynagent. If you discover a security vulnerability within this project, please **DO NOT** disclose it publicly by opening a GitHub Issue.
 
 Instead, please report it privately to the maintainer:
 **Email:** [khanhnam.copywriting@gmail.com]

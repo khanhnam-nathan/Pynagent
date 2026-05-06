@@ -45,7 +45,7 @@ jobs:
       - name: Run Python benchmarks
         id: benchmark
         run: |
-          python pyneat/benchmark.py \
+          python Pynagent/benchmark.py \
             --iterations ${{ env.BENCHMARK_ITERATIONS }} \
             --output benchmark-results.json \
             --warmup 3
@@ -83,18 +83,18 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: pyneat-rs
+          workspaces: pynagent
 
       - name: Build Rust backend
         run: |
-          cd pyneat-rs
+          cd pynagent
           cargo build --release
         env:
           CARGO_INCREMENTAL: 0
 
       - name: Verify Rust binary
         run: |
-          ./pyneat-rs/target/release/pyneat --version
+          ./pynagent/target/release/Pynagent --version
 
       - name: Run Rust binary benchmark
         run: |
@@ -107,7 +107,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: rust-benchmark-results
-          path: pyneat-rs/benchmark_results.json
+          path: pynagent/benchmark_results.json
           retention-days: 30
 
   compare-rust-vs-python:
@@ -164,7 +164,7 @@ jobs:
       - name: Run baseline benchmarks
         run: |
           pip install -e .
-          python pyneat/benchmark.py --iterations 5 --output baseline-results.json
+          python Pynagent/benchmark.py --iterations 5 --output baseline-results.json
 
       - name: Compare performance
         id: compare

@@ -27,7 +27,7 @@
       "elapsed_ms": 799.73,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -38,7 +38,7 @@
       "elapsed_ms": 824.41,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -49,7 +49,7 @@
       "elapsed_ms": 1009.4,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -60,7 +60,7 @@
       "elapsed_ms": 1006.86,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -71,7 +71,7 @@
       "elapsed_ms": 936.74,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -82,7 +82,7 @@
       "elapsed_ms": 839.69,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -93,7 +93,7 @@
       "elapsed_ms": 848.42,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -104,7 +104,7 @@
       "elapsed_ms": 848.26,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -115,7 +115,7 @@
       "elapsed_ms": 280.57,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -126,7 +126,7 @@
       "elapsed_ms": 298.9,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -137,7 +137,7 @@
       "elapsed_ms": 347.32,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -148,7 +148,7 @@
       "elapsed_ms": 249.05,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -159,7 +159,7 @@
       "elapsed_ms": 368.87,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -170,7 +170,7 @@
       "elapsed_ms": 280.08,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -181,7 +181,7 @@
       "elapsed_ms": 324.99,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -192,7 +192,7 @@
       "elapsed_ms": 329.53,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -203,7 +203,7 @@
       "elapsed_ms": 223.44,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -214,7 +214,7 @@
       "elapsed_ms": 57.87,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -225,7 +225,7 @@
       "elapsed_ms": 69.75,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -236,7 +236,7 @@
       "elapsed_ms": 67.54,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -247,7 +247,7 @@
       "elapsed_ms": 74.99,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -258,7 +258,7 @@
       "elapsed_ms": 71.92,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -269,7 +269,7 @@
       "elapsed_ms": 77.26,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -280,7 +280,7 @@
       "elapsed_ms": 92.61,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -291,7 +291,7 @@
       "elapsed_ms": 662.34,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -302,7 +302,7 @@
       "elapsed_ms": 869.48,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -313,7 +313,7 @@
       "elapsed_ms": 838.71,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -324,7 +324,7 @@
       "elapsed_ms": 955.59,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -335,7 +335,7 @@
       "elapsed_ms": 892.94,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -346,7 +346,7 @@
       "elapsed_ms": 636.64,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -357,7 +357,7 @@
       "elapsed_ms": 585.88,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -368,7 +368,7 @@
       "elapsed_ms": 505.54,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -379,7 +379,7 @@
       "elapsed_ms": 7826.01,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -390,7 +390,7 @@
       "elapsed_ms": 8515.27,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -401,7 +401,7 @@
       "elapsed_ms": 10781.14,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -412,7 +412,7 @@
       "elapsed_ms": 10906.59,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -423,7 +423,7 @@
       "elapsed_ms": 9394.67,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -434,7 +434,7 @@
       "elapsed_ms": 6994.54,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -445,7 +445,7 @@
       "elapsed_ms": 6428.24,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -456,7 +456,7 @@
       "elapsed_ms": 6155.47,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -467,7 +467,7 @@
       "elapsed_ms": 321.37,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -478,7 +478,7 @@
       "elapsed_ms": 249.62,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -489,7 +489,7 @@
       "elapsed_ms": 254.45,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -500,7 +500,7 @@
       "elapsed_ms": 322.51,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -511,7 +511,7 @@
       "elapsed_ms": 353.21,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -522,7 +522,7 @@
       "elapsed_ms": 212.34,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -533,7 +533,7 @@
       "elapsed_ms": 213.41,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -544,7 +544,7 @@
       "elapsed_ms": 196.27,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -555,7 +555,7 @@
       "elapsed_ms": 1112.01,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -566,7 +566,7 @@
       "elapsed_ms": 881.28,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -577,7 +577,7 @@
       "elapsed_ms": 627.04,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -588,7 +588,7 @@
       "elapsed_ms": 613.44,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -599,7 +599,7 @@
       "elapsed_ms": 769.12,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -610,7 +610,7 @@
       "elapsed_ms": 679.27,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -621,7 +621,7 @@
       "elapsed_ms": 634.4,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     },
     {
@@ -632,7 +632,7 @@
       "elapsed_ms": 623.07,
       "exception_type": "ValueError",
       "exception_message": "line must be >= 1, got 0",
-      "traceback": "Traceback (most recent call last):\n  File \"D:\\pyneat-final\\pyneat\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\pyneat-final\\pyneat\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\pyneat-final\\pyneat\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
+      "traceback": "Traceback (most recent call last):\n  File \"D:\\Pynagent-final\\Pynagent\\tools\\github_fuzz\\fuzz_runner.py\", line 238, in _process\n    result = engine.process_code_file(code_file)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\Pynagent-final\\Pynagent\\core\\engine.py\", line 535, in process_code_file\n    security_finding_to_marker(\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 663, in security_finding_to_marker\n    return AgentMarker(\n           ^^^^^^^^^^^^\n  File \"<string>\", line 36, in __init__\n  File \"D:\\Pynagent-final\\Pynagent\\core\\types.py\", line 451, in __post_init__\n    raise ValueError(f\"line must be >= 1, got {self.line}\")\nValueError: line must be >= 1, got 0\n",
       "line_count": 0
     }
   ],

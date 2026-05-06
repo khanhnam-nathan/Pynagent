@@ -1,20 +1,20 @@
 # Writing Rules
 
-This guide explains how to write custom rules for PyNeat.
+This guide explains how to write custom rules for Pynagent.
 
 ## Overview
 
 A rule is a Python class that:
 
-1. Inherits from `pyneat.rules.base.Rule`
+1. Inherits from `Pynagent.rules.base.Rule`
 2. Implements `apply(CodeFile) -> TransformationResult`
 3. Returns the modified code and a list of changes
 
 ## Basic Rule Structure
 
 ```python
-from pyneat.rules.base import Rule
-from pyneat.core.types import CodeFile, TransformationResult, RuleConfig
+from Pynagent.rules.base import Rule
+from Pynagent.core.types import CodeFile, TransformationResult, RuleConfig
 
 class MyCustomRule(Rule):
     """Description of what this rule does."""
@@ -76,8 +76,8 @@ class MyTransformer(cst.CSTTransformer):
 For security rules, use the security registry:
 
 ```python
-from pyneat.rules import SecurityScannerRule
-from pyneat.core.types import SecurityFinding, RuleConfig
+from Pynagent.rules import SecurityScannerRule
+from Pynagent.core.types import SecurityFinding, RuleConfig
 
 # Add to your rule's apply() method
 def create_finding(
@@ -115,7 +115,7 @@ def create_finding(
 ### RuleConfig
 
 ```python
-from pyneat.core.types import RuleConfig
+from Pynagent.core.types import RuleConfig
 
 rule = MyRule(RuleConfig(
     enabled=True,
@@ -136,7 +136,7 @@ rule = MyRule(RuleConfig(
 
 ```python
 from pathlib import Path
-from pyneat.core.types import CodeFile, RuleConfig
+from Pynagent.core.types import CodeFile, RuleConfig
 from my_rule import MyCustomRule
 
 
@@ -165,7 +165,7 @@ def test_rule_no_change():
 Register rules with the RuleRegistry:
 
 ```python
-from pyneat.rules.registry import RuleRegistry, register_rule
+from Pynagent.rules.registry import RuleRegistry, register_rule
 
 # Method 1: Decorator
 @RuleRegistry.register(package="safe", priority=50)
@@ -189,8 +189,8 @@ register_rule(MyRule, package="conservative", priority=75)
 
 See these existing rules for reference:
 
-- `pyneat/rules/is_not_none.py` - Simple transformation
-- `pyneat/rules/debug.py` - Debug code removal
-- `pyneat/rules/security.py` - Security rule pattern
-- `pyneat/rules/deadcode.py` - AST analysis
-- `pyneat/rules/ai_bugs.py` - AI-specific rules
+- `Pynagent/rules/is_not_none.py` - Simple transformation
+- `Pynagent/rules/debug.py` - Debug code removal
+- `Pynagent/rules/security.py` - Security rule pattern
+- `Pynagent/rules/deadcode.py` - AST analysis
+- `Pynagent/rules/ai_bugs.py` - AI-specific rules

@@ -1,0 +1,24 @@
+# Dockerfile for the Bot Notification Server (FastAPI)
+# Build: docker build -f pyneat-rs/pyneat/tools/Dockerfile.bot -t pyneat-bot-server .
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install PyNEAT and dependencies
+RUN pip install --no-cache-dir \
+    pyneat-cli \
+    fastapi \
+    uvicorn \
+    aiohttp \
+    pydantic
+
+# Copy bot notification server
+COPY pyneat/tools/bot_notification_server.py /app/
+
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8080
+
+EXPOSE 8080
+
+CMD ["python", "-m", "uvicorn", "bot_notification_server:create_app", "--factory", "--host", "0.0.0.0", "--port", "8080"]

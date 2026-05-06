@@ -4,7 +4,7 @@
 - Auto manifest export integration
 - `--export-manifest` flag for `clean` and `clean-dir` commands
 - Config-driven export in `pyproject.toml` (`export_manifest = true`)
-- Pre-commit hook for auto-generate `.pyneat.manifest.json`
+- Pre-commit hook for auto-generate `.Pynagent.manifest.json`
 - GitHub Actions job for CI/CD manifest export
 
 ### Changes

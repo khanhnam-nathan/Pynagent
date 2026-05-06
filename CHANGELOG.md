@@ -35,13 +35,13 @@ Dự án tuân theo [Semantic Versioning](https://semver.org/lang/vi/) và [Keep
 ### Added
 
 #### AgentMarker (Issue Tracking Metadata)
-- `AgentMarker` dataclass in `pyneat.core.types` - metadata cho từng issue
+- `AgentMarker` dataclass in `Pynagent.core.types` - metadata cho từng issue
 - Fields: `marker_id`, `issue_type`, `rule_id`, `severity`, `line`, `end_line`, `hint`, `why`, `confidence`, `cwe_id`, `can_auto_fix`, `fix_diff`, `auto_fix_before/after`, `requires_user_input`, `related_markers`
 - Methods: `to_dict()`, `from_dict()`, `to_json()`, `from_json()`, `to_comment()`
 - Auto-export as `# PYNAGENT: {...}` comments in source code
 
 #### ManifestExporter & Export Formats
-- `ManifestExporter` class - ghi markers ra `.pyneat.manifest.json`
+- `ManifestExporter` class - ghi markers ra `.Pynagent.manifest.json`
 - `export_to_sarif()` - SARIF 2.1.0 format (GitHub Security tab, Azure DevOps)
 - `export_to_codeclimate()` - Code Climate format cho CI integration
 - `export_to_markdown()` - Markdown report đọc bằng người
@@ -72,8 +72,8 @@ Dự án tuân theo [Semantic Versioning](https://semver.org/lang/vi/) và [Keep
 ### Added
 
 #### Auto Manifest Export Integration
-- **Config-driven Export**: `export_manifest = true` in `[tool.pyneat]` section
-- **Pre-commit Hook**: Auto-generate `.pyneat.manifest.json` on commit
+- **Config-driven Export**: `export_manifest = true` in `[tool.Pynagent]` section
+- **Pre-commit Hook**: Auto-generate `.Pynagent.manifest.json` on commit
 - **GitHub Actions**: CI/CD job for automated manifest export on push/PR
 
 #### Enhanced CLI
@@ -143,7 +143,7 @@ Dự án tuân theo [Semantic Versioning](https://semver.org/lang/vi/) và [Keep
 - Tạo CONTRIBUTING.md với hướng dẫn phát triển
 - Tạo CODE_OF_CONDUCT.md với quy tắc ứng xử cộng đồng
 
-#### Kiến trúc Rust (pyneat-rs)
+#### Kiến trúc Rust (pynagent)
 - Khởi tạo project Rust với PyO3 bindings
 - Implement 5 security rules cơ bản (SEC-001 ~ SEC-005):
   - SEC-001: Command Injection Detection
@@ -157,7 +157,7 @@ Dự án tuân theo [Semantic Versioning](https://semver.org/lang/vi/) và [Keep
 
 #### Cấu trúc thư mục mới
 ```
-pyneat-rs/
+pynagent/
 ├── Cargo.toml
 ├── src/
 │   ├── lib.rs          # PyO3 bindings
@@ -185,7 +185,7 @@ pyneat-rs/
 - [x] Auto-fix system cho các vulnerabilities phổ biến ✅
 - [x] Quality rules (imports, naming, dead code) ✅
 - [ ] CLI integration với `--rust` flag
-- [ ] Binary wheels cho pip install pyneat[rust]
+- [ ] Binary wheels cho pip install Pynagent[rust]
 - [ ] Windows wheels với proper Python 3.10+ support
 
 ## [2.0.0] - 2026-03-XX

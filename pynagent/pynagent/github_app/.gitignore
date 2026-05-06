@@ -1,0 +1,70 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+
+# PyNEAT-specific files
+.pyneat.toml
+.pyneat_cache/
+*.pyneat.sarif
+*.pyneat.log
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Node.js (GitHub App)
+github_app/node_modules/
+github_app/private-key.pem
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Credentials
+*.pem
+*.key
+credentials.json
+secrets.json
+
+# Test files
+test_data/
+test-samples/
+test.py
+test_mcp.py
+test_mcp_err.txt
+test_mcp_out.txt
+
+# Build artifacts
+sdist_extract/
+pyneat_cli-3.0.6/
+pyneat_dashboard/
+
+# Misc
+*.bak
+*.tmp

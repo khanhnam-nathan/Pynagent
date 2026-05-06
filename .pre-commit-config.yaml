@@ -1,7 +1,7 @@
-# Pre-commit configuration for PyNEAT
+# Pre-commit configuration for Pynagent
 #
 # Install:
-#   pip install pre-commit pyneat
+#   pip install pre-commit Pynagent
 #   pre-commit install
 #
 # Update hooks:
@@ -15,34 +15,34 @@
 #   - Respects .pre-commit-override.yaml for local config
 
 repos:
-  # PyNEAT - AI-Generated Code Scanner
+  # Pynagent - AI-Generated Code Scanner
   - repo: local
     hooks:
       # Security scan - fast, runs on all staged Python files
-      - id: pyneat-security
-        name: PyNEAT Security Scan
+      - id: Pynagent-security
+        name: Pynagent Security Scan
         description: Scan for security vulnerabilities in Python code (staged files only)
-        entry: python -c "import subprocess, sys; files=[f for f in sys.argv[1:] if f.endswith('.py')]; sys.exit(subprocess.call(['pyneat', 'check'] + files + ['--severity', '--fail-on', 'critical']) if files else 0)"
+        entry: python -c "import subprocess, sys; files=[f for f in sys.argv[1:] if f.endswith('.py')]; sys.exit(subprocess.call(['Pynagent', 'check'] + files + ['--severity', '--fail-on', 'critical']) if files else 0)"
         language: system
         stages: [pre-commit, push]
         pass_filenames: true
         require_serial: false
 
       # Code quality check - dry-run mode with diff
-      - id: pyneat-clean
-        name: PyNEAT AI Code Scanner
+      - id: Pynagent-clean
+        name: Pynagent AI Code Scanner
         description: Clean AI-generated code patterns, remove debug prints, fix security issues
-        entry: python -c "import subprocess, sys; files=[f for f in sys.argv[1:] if f.endswith('.py')]; sys.exit(subprocess.call(['pyneat', 'clean'] + files + ['--dry-run', '--diff']) if files else 0)"
+        entry: python -c "import subprocess, sys; files=[f for f in sys.argv[1:] if f.endswith('.py')]; sys.exit(subprocess.call(['Pynagent', 'clean'] + files + ['--dry-run', '--diff']) if files else 0)"
         language: system
         stages: [pre-commit]
         pass_filenames: true
         require_serial: false
 
       # Auto-generate PYNAGENT manifest (non-blocking)
-      - id: pyneat-manifest
-        name: PyNEAT Manifest Generator
-        description: Generate .pyneat.manifest.json for AI editors (non-blocking)
-        entry: pyneat clean --export-manifest --dry-run
+      - id: Pynagent-manifest
+        name: Pynagent Manifest Generator
+        description: Generate .Pynagent.manifest.json for AI editors (non-blocking)
+        entry: Pynagent clean --export-manifest --dry-run
         language: system
         files: \.py$
         stages: [pre-commit]
@@ -50,30 +50,30 @@ repos:
         pass_filenames: true
 
       # Check mode - blocks commit on issues (push stage)
-      - id: pyneat-check
-        name: PyNEAT Check Mode
+      - id: Pynagent-check
+        name: Pynagent Check Mode
         description: Check code without making changes (blocks on critical issues)
-        entry: python -c "import subprocess, sys; files=[f for f in sys.argv[1:] if f.endswith('.py')]; result=subprocess.call(['pyneat', 'check'] + files + ['--fail-on', 'high']) if files else 0; sys.exit(result)"
+        entry: python -c "import subprocess, sys; files=[f for f in sys.argv[1:] if f.endswith('.py')]; result=subprocess.call(['Pynagent', 'check'] + files + ['--fail-on', 'high']) if files else 0; sys.exit(result)"
         language: system
         stages: [push]
         pass_filenames: true
         require_serial: false
 
       # Multi-language scan - JavaScript/TypeScript
-      - id: pyneat-js-scan
-        name: PyNEAT JS/TS Scanner
+      - id: Pynagent-js-scan
+        name: Pynagent JS/TS Scanner
         description: Scan JavaScript and TypeScript files for security issues
-        entry: python -c "import subprocess, sys, os; js=[f for f in sys.argv[1:] if f.endswith(('.js','.jsx','.ts','.tsx'))]; sys.exit(subprocess.call(['pyneat', 'check', '.'] + (['--lang', 'javascript'] if os.environ.get('PRE_COMMIT') else [])) if js else 0)"
+        entry: python -c "import subprocess, sys, os; js=[f for f in sys.argv[1:] if f.endswith(('.js','.jsx','.ts','.tsx'))]; sys.exit(subprocess.call(['Pynagent', 'check', '.'] + (['--lang', 'javascript'] if os.environ.get('PRE_COMMIT') else [])) if js else 0)"
         language: system
         stages: [pre-commit, push]
         pass_filenames: true
         types: [javascript, typescript]
 
       # Terraform/IaC scan
-      - id: pyneat-iac-scan
-        name: PyNEAT IaC Scanner
+      - id: Pynagent-iac-scan
+        name: Pynagent IaC Scanner
         description: Scan Terraform and Kubernetes files for misconfigurations
-        entry: python -c "import subprocess, sys; tf=[f for f in sys.argv[1:] if f.endswith(('.tf','.yaml','.yml'))]; sys.exit(0) if not tf else subprocess.call(['pyneat', 'check'] + tf)"
+        entry: python -c "import subprocess, sys; tf=[f for f in sys.argv[1:] if f.endswith(('.tf','.yaml','.yml'))]; sys.exit(0) if not tf else subprocess.call(['Pynagent', 'check'] + tf)"
         language: system
         stages: [pre-commit, push]
         pass_filenames: true

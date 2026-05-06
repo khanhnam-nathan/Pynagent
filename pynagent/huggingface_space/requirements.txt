@@ -1,0 +1,3 @@
+# HuggingFace Space Python dependencies
+gradio>=4.44.0
+Pynagent-cli>=3.0.0

@@ -1,10 +1,10 @@
 # Architecture
 
-This document describes the architecture of PyNeat.
+This document describes the architecture of Pynagent.
 
 ## Overview
 
-PyNeat is an AI-Generated Code Scanner that detects and fixes common issues in AI-generated code. The architecture is designed to be modular, extensible, and performant.
+Pynagent is an AI-Generated Code Scanner that detects and fixes common issues in AI-generated code. The architecture is designed to be modular, extensible, and performant.
 
 ## System Components
 
@@ -23,7 +23,7 @@ graph TB
         TypeShield[TypeAwareShield]
     end
 
-    subgraph "Rust Backend pyneat-rs"
+    subgraph "Rust Backend pynagent"
         RustCLI[Rust CLI - main.rs]
         PyO3[PyO3 Bindings]
         LN_AST[LN-AST Normalizer]
@@ -86,17 +86,17 @@ graph TB
 
 ## Component Descriptions
 
-### CLI (`pyneat/cli.py`)
+### CLI (`Pynagent/cli.py`)
 
 The command-line interface provides user-facing commands:
 
-- `pyneat clean <file>` - Clean a single file
-- `pyneat check <target>` - Security scan
-- `pyneat explain <rule_id>` - Explain a rule
-- `pyneat report <target>` - Generate report
-- `pyneat lsp` - Start LSP server
+- `Pynagent clean <file>` - Clean a single file
+- `Pynagent check <target>` - Security scan
+- `Pynagent explain <rule_id>` - Explain a rule
+- `Pynagent report <target>` - Generate report
+- `Pynagent lsp` - Start LSP server
 
-### RuleEngine (`pyneat/core/engine.py`)
+### RuleEngine (`Pynagent/core/engine.py`)
 
 The core orchestration engine:
 
@@ -106,7 +106,7 @@ The core orchestration engine:
 4. Detects conflicts between rules
 5. Applies semantic guards and type shields
 
-### Rules (`pyneat/rules/`)
+### Rules (`Pynagent/rules/`)
 
 Each rule is a standalone class that:
 
@@ -115,7 +115,7 @@ Each rule is a standalone class that:
 3. Can read/write AST/CST nodes
 4. Returns changes and security findings
 
-### Rust Backend (`pyneat-rs/`)
+### Rust Backend (`pynagent/`)
 
 High-performance scanner written in Rust:
 
@@ -123,7 +123,7 @@ High-performance scanner written in Rust:
 - **Rayon** for parallel rule evaluation
 - **PyO3** for seamless Python bindings
 - **LN-AST** normalizer for language-neutral code representation
-- See [pyneat-rs/README.md](../pyneat-rs/README.md) for full details
+- See [pynagent/README.md](../pynagent/README.md) for full details
 
 ## Data Flow
 
@@ -136,7 +136,7 @@ sequenceDiagram
     participant Rule
     participant LibCST
 
-    User->>CLI: pyneat clean file.py
+    User->>CLI: Pynagent clean file.py
     CLI->>Engine: process_file(file)
 
     alt Python Path
@@ -164,10 +164,10 @@ sequenceDiagram
 
 ```mermaid
 graph LR
-    Config[Config Files<br/>pyproject.toml<br/>pyneat.yaml]
+    Config[Config Files<br/>pyproject.toml<br/>Pynagent.yaml]
     Env[Environment Variables]
     CLI[CLI Arguments]
-    Pyproject[tool.pyneat<br/>section]
+    Pyproject[tool.Pynagent<br/>section]
 
     Config --> Loader[ConfigLoader]
     Env --> Loader
@@ -183,8 +183,8 @@ graph LR
 Create a custom rule by subclassing `Rule`:
 
 ```python
-from pyneat.rules.base import Rule
-from pyneat.core.types import CodeFile, TransformationResult, RuleConfig
+from Pynagent.rules.base import Rule
+from Pynagent.core.types import CodeFile, TransformationResult, RuleConfig
 
 class MyCustomRule(Rule):
     """Description of what this rule does."""
@@ -212,7 +212,7 @@ Load plugins via entry points:
 
 ```toml
 # pyproject.toml
-[project.entry-points."pyneat.plugins"]
+[project.entry-points."Pynagent.plugins"]
 my-plugin = "my_package:MyPlugin"
 ```
 
@@ -221,7 +221,7 @@ my-plugin = "my_package:MyPlugin"
 Register rules with package and priority:
 
 ```python
-from pyneat.rules.registry import RuleRegistry, register_rule
+from Pynagent.rules.registry import RuleRegistry, register_rule
 
 @RuleRegistry.register(package="safe", priority=10)
 class MyRule(Rule):

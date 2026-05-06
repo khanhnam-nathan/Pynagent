@@ -1,6 +1,6 @@
-# Contributing to PyNeat
+# Contributing to Pynagent
 
-Thank you for your interest in contributing to PyNeat! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to Pynagent! This document provides guidelines and instructions for contributing.
 
 ## Code of Conduct
 
@@ -11,15 +11,15 @@ This project adheres to the [Contributor Covenant Code of Conduct](./CODE_OF_CON
 ### Prerequisites
 
 - Python 3.10 or higher
-- Rust 1.70+ (for pyneat-rs development)
+- Rust 1.70+ (for pynagent development)
 - Git
 
 ### Initial Setup
 
 ```bash
 # Clone the repository
-git clone https://github.com/khanhnam-nathan/Pyneat.git
-cd Pyneat
+git clone https://github.com/khanhnam-nathan/Pynagent.git
+cd Pynagent
 
 # Create virtual environment
 python -m venv venv
@@ -31,7 +31,7 @@ source venv/bin/activate  # Linux/macOS
 pip install -e ".[dev]"
 
 # Install Rust backend dependencies
-cd pyneat-rs
+cd pynagent
 cargo build --release
 cd ..
 ```
@@ -58,7 +58,7 @@ isort .
 ruff check .
 
 # Type checking
-mypy pyneat/
+mypy Pynagent/
 ```
 
 ### Python Style Guide
@@ -84,17 +84,17 @@ pytest
 pytest tests/test_agent_marker/test_marker_data.py
 
 # Run with coverage
-pytest --cov=pyneat --cov-report=html
+pytest --cov=Pynagent --cov-report=html
 
-# Run pyneat-rs tests
-cd pyneat-rs
+# Run pynagent tests
+cd pynagent
 cargo test
 ```
 
 ## Project Structure
 
 ```
-pyneat/
+Pynagent/
 ├── core/           # Core data structures (AgentMarker, Manifest)
 ├── rules/          # Rule implementations
 │   ├── safe/       # Safe package rules
@@ -112,7 +112,7 @@ pyneat/
 ### 1. Create the Rule Class
 
 ```python
-from pyneat.rules.base import AIBugRule, FixResult
+from Pynagent.rules.base import AIBugRule, FixResult
 
 class MyNewRule(AIBugRule):
     """Description of what this rule detects."""
@@ -133,7 +133,7 @@ class MyNewRule(AIBugRule):
 ### 2. Register the Rule
 
 ```python
-# In pyneat/rules/__init__.py
+# In Pynagent/rules/__init__.py
 from .my_new_rule import MyNewRule
 
 ALL_RULES = [
@@ -192,7 +192,7 @@ Then open a Pull Request on GitHub with:
 
 ## Release Process
 
-1. Update version in `pyneat/__init__.py`
+1. Update version in `Pynagent/__init__.py`
 2. Update CHANGELOG.md
 3. Create git tag: `git tag v2.x.x`
 4. Push tag: `git push origin v2.x.x`
@@ -206,4 +206,4 @@ Then open a Pull Request on GitHub with:
 
 ## License
 
-By contributing to PyNeat, you agree that your contributions will be licensed under the MIT License.
+By contributing to Pynagent, you agree that your contributions will be licensed under the MIT License.

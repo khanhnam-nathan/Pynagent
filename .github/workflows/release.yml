@@ -1,4 +1,4 @@
-# PyNEAT Release Workflow
+# Pynagent Release Workflow
 #
 # Builds and publishes pre-built wheels to PyPI on version tags.
 # Supports: Linux (manylinux), macOS (x86_64 + arm64), Windows (x64)

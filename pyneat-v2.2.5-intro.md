@@ -6,9 +6,9 @@ The AI loved opening files without `with` statements. It loved calling APIs with
 
 Long story short: AI-generated code isn't bad because it looks messy. It's bad because it looks clean but has a thousand tiny landmines waiting to blow up in production.
 
-That's why I built **PyNeat**.
+That's why I built **Pynagent**.
 
-It's not just a formatter (Black does that better). It's not just a linter (Ruff is faster). PyNeat is an **AST-level code surgeon** that actually restructures your code at the deepest level.
+It's not just a formatter (Black does that better). It's not just a linter (Ruff is faster). Pynagent is an **AST-level code surgeon** that actually restructures your code at the deepest level.
 
 Here's what it does that no other tool does:
 
@@ -35,7 +35,7 @@ Here's what it does that no other tool does:
 
 **Rust backend for when you actually need speed:**
 ```bash
-pip install pyneat[rust]
+pip install Pynagent[rust]
 ```
 
 That gives you tree-sitter parsing, precompiled regexes, and Rayon for true parallel processing without GIL contention. 50-100x faster on large codebases.
@@ -43,7 +43,7 @@ That gives you tree-sitter parsing, precompiled regexes, and Rayon for true para
 **Usage is dead simple:**
 
 ```python
-from pyneat import clean_code
+from Pynagent import clean_code
 
 # One-liner
 clean_code("x == None")  # → "x is not None"
@@ -52,9 +52,9 @@ clean_code("print('debug')", remove_debug=True)  # → ""
 
 ```bash
 # CLI
-pyneat clean my_file.py --dry-run --diff
-pyneat check my_file.py --severity --cvss
-pyneat check ./src --fail-on critical --format sarif --output report.sarif
+Pynagent clean my_file.py --dry-run --diff
+Pynagent check my_file.py --severity --cvss
+Pynagent check ./src --fail-on critical --format sarif --output report.sarif
 ```
 
 **3 safety tiers:**
@@ -69,7 +69,7 @@ SARIF (GitHub Security, Azure DevOps), Code Climate (GitLab), Markdown reports, 
 
 I'm not gonna pretend it's a silver bullet. But if you're working with AI-generated code, legacy code that nobody wants to touch, or just want a security scanner that also cleans up your mess — it's pretty useful.
 
-pypi: `pip install pyneat`
-github: https://github.com/pyneat/pyneat
+pypi: `pip install Pynagent`
+github: https://github.com/Pynagent/Pynagent
 
 Version 2.4.5 is out now. Would love feedback. AMA.

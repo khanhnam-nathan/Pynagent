@@ -1,22 +1,22 @@
-# PyNeat FAQ
+# Pynagent FAQ
 
-Frequently Asked Questions about PyNeat.
+Frequently Asked Questions about Pynagent.
 
 ## Installation
 
 ### Q: Python 3.12/3.13 is not supported?
 
-PyNeat supports Python 3.10 and higher. If you encounter issues with newer Python versions, please report them on GitHub.
+Pynagent supports Python 3.10 and higher. If you encounter issues with newer Python versions, please report them on GitHub.
 
 ### Q: How do I install the Rust backend?
 
 ```bash
-pip install pyneat[rust]
+pip install Pynagent[rust]
 ```
 
 For manual installation:
 ```bash
-cd pyneat-rs
+cd pynagent
 cargo build --release
 ```
 
@@ -31,31 +31,31 @@ https://visualstudio.microsoft.com/visual-cpp-build-tools/
 
 ```bash
 # Scan a directory
-pyneat check ./src
+Pynagent check ./src
 
 # Scan specific files
-pyneat check file1.py file2.py file3.py
+Pynagent check file1.py file2.py file3.py
 ```
 
-### Q: How do I see what changes PyNeat will make?
+### Q: How do I see what changes Pynagent will make?
 
 ```bash
-pyneat clean file.py --dry-run --diff
+Pynagent clean file.py --dry-run --diff
 ```
 
 ### Q: How do I apply fixes automatically?
 
 ```bash
 # Creates a backup before modifying
-pyneat clean file.py --in-place --backup
+Pynagent clean file.py --in-place --backup
 
 # Or without backup
-pyneat clean file.py --in-place
+Pynagent clean file.py --in-place
 ```
 
 ### Q: Can I exclude certain files or directories?
 
-Create a `pyneat.yaml` config:
+Create a `Pynagent.yaml` config:
 
 ```yaml
 exclude:
@@ -68,15 +68,15 @@ exclude:
 
 ```bash
 # Ignore one rule
-pyneat clean file.py --ignore SecurityScannerRule
+Pynagent clean file.py --ignore SecurityScannerRule
 
 # Ignore multiple rules
-pyneat clean file.py --ignore "Rule1,Rule2,Rule3"
+Pynagent clean file.py --ignore "Rule1,Rule2,Rule3"
 ```
 
 Or in code:
 ```python
-from pyneat.rules import exclude_rules
+from Pynagent.rules import exclude_rules
 
 engine = RuleEngine(rules=exclude_rules(["SecurityScannerRule"]))
 ```
@@ -86,7 +86,7 @@ engine = RuleEngine(rules=exclude_rules(["SecurityScannerRule"]))
 ### Q: What rules are available?
 
 ```bash
-pyneat rules
+Pynagent rules
 ```
 
 ### Q: How do I create a custom rule?
@@ -95,7 +95,7 @@ See [writing-rules.md](writing-rules.md) for a complete guide.
 
 Basic example:
 ```python
-from pyneat.rules.base import AIBugRule
+from Pynagent.rules.base import AIBugRule
 
 class MyRule(AIBugRule):
     RULE_ID = "MYRULE-001"
@@ -122,15 +122,15 @@ class MyRule(AIBugRule):
 
 ## Security
 
-### Q: Does PyNeat send my code anywhere?
+### Q: Does Pynagent send my code anywhere?
 
-No. PyNeat runs entirely locally on your machine. No code is sent to external servers.
+No. Pynagent runs entirely locally on your machine. No code is sent to external servers.
 
 ### Q: How accurate is the security scanner?
 
-PyNeat detects common security issues in AI-generated code. It should be used as a supplement to, not a replacement for, comprehensive security testing.
+Pynagent detects common security issues in AI-generated code. It should be used as a supplement to, not a replacement for, comprehensive security testing.
 
-### Q: Can PyNeat fix security vulnerabilities automatically?
+### Q: Can Pynagent fix security vulnerabilities automatically?
 
 Some security issues can be auto-fixed:
 - `yaml.load()` without SafeLoader
@@ -140,58 +140,58 @@ Other issues are reported but require manual intervention.
 
 ## Performance
 
-### Q: PyNeat is running slowly on large projects
+### Q: Pynagent is running slowly on large projects
 
 - Use the Rust backend for better performance
 - Run on specific files instead of entire directories
 - Increase memory with `--max-memory` flag
 
-### Q: How do I benchmark PyNeat?
+### Q: How do I benchmark Pynagent?
 
 ```bash
 # Python benchmark (compares Rust vs Python scanner)
-cd pyneat-rs
+cd pynagent
 python benchmark.py --files 200 --iterations 5
 
 # Rust criterion benchmarks
 cargo bench --bench compare
 ```
 
-For detailed benchmark results, see [pyneat-rs/README.md](../pyneat-rs/README.md).
+For detailed benchmark results, see [pynagent/README.md](../pynagent/README.md).
 
 ### Q: Config file not being read
 
-PyNeat looks for config in (in priority order):
-1. `pyproject.toml` section `[tool.pyneat]`
-2. `./pyneat.yaml`
-3. `./pyneat.yml`
-4. `~/.pyneat.yaml`
+Pynagent looks for config in (in priority order):
+1. `pyproject.toml` section `[tool.Pynagent]`
+2. `./Pynagent.yaml`
+3. `./Pynagent.yml`
+4. `~/.Pynagent.yaml`
 
 Make sure the file is in the correct location.
 
 ## Integrations
 
-### Q: How do I use PyNeat with GitHub Actions?
+### Q: How do I use Pynagent with GitHub Actions?
 
 See [github-actions-guide.md](github-actions-guide.md).
 
-### Q: How do I use PyNeat with pre-commit?
+### Q: How do I use Pynagent with pre-commit?
 
 ```yaml
 # .pre-commit-config.yaml
 repos:
   - repo: local
     hooks:
-      - id: pyneat-check
-        name: PyNeat Check
-        entry: pyneat check
+      - id: Pynagent-check
+        name: Pynagent Check
+        entry: Pynagent check
         language: system
         types: [python]
 ```
 
-### Q: Can I use PyNeat in my IDE?
+### Q: Can I use Pynagent in my IDE?
 
-- VSCode: Use the PyNeat extension
+- VSCode: Use the Pynagent extension
 - PyCharm: Use the command line tool
 - Cursor: Use with pre-commit or command line
 
@@ -200,33 +200,33 @@ repos:
 ### Q: How do I export to SARIF format?
 
 ```bash
-pyneat report ./src -f sarif -o results.sarif
+Pynagent report ./src -f sarif -o results.sarif
 ```
 
 Or via Python API:
 
 ```python
-from pyneat.core.manifest import export_to_sarif
+from Pynagent.core.manifest import export_to_sarif
 sarif = export_to_sarif(markers, source_file=Path("app.py"))
 ```
 
 ### Q: How do I integrate with SonarQube?
 
 ```bash
-pyneat report ./src -f sonarqube -o sonar-report.json
+Pynagent report ./src -f sonarqube -o sonar-report.json
 ```
 
 Or via Python API:
 
 ```python
-from pyneat.core.manifest import export_to_sonarqube
+from Pynagent.core.manifest import export_to_sonarqube
 issues = export_to_sonarqube(markers, source_file=Path("app.py"))
 ```
 
 ### Q: How do I create a HTML report?
 
 ```python
-from pyneat.core.manifest import export_to_html_report
+from Pynagent.core.manifest import export_to_html_report
 
 html = export_to_html_report(markers, title="My Report")
 with open("report.html", "w") as f:
@@ -235,21 +235,21 @@ with open("report.html", "w") as f:
 
 ## Troubleshooting
 
-### Q: "command not found: pyneat" after installation
+### Q: "command not found: Pynagent" after installation
 
 ```bash
 # Check installation
-pip show pyneat
+pip show Pynagent
 
 # Try running as module
-python -m pyneat check file.py
+python -m Pynagent check file.py
 
 # Reinstall if needed
-pip uninstall pyneat
-pip install pyneat
+pip uninstall Pynagent
+pip install Pynagent
 ```
 
-### Q: PyNeat hangs or crashes
+### Q: Pynagent hangs or crashes
 
 - Check available memory
 - Try running on smaller files
@@ -258,19 +258,19 @@ pip install pyneat
 ### Q: False positives on legitimate code
 
 - Use `--package safe` for fewer aggressive rules
-- Configure specific rules in `pyneat.yaml`
-- Use inline ignores: `# pyneat: ignore-line`
+- Configure specific rules in `Pynagent.yaml`
+- Use inline ignores: `# Pynagent: ignore-line`
 
 ## Contributing
 
-### Q: How do I contribute to PyNeat?
+### Q: How do I contribute to Pynagent?
 
 See [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ### Q: How do I report a bug?
 
 Open an issue on GitHub with:
-- PyNeat version
+- Pynagent version
 - Python version
 - Sample code that triggers the bug
 - Expected vs actual behavior
@@ -284,4 +284,4 @@ Open a feature request on GitHub with:
 
 ## License
 
-PyNeat is licensed under the **GNU Affero General Public License v3.0 (AGPLv3)**. See [LICENSE](LICENSE) for details.
+Pynagent is licensed under the **GNU Affero General Public License v3.0 (AGPLv3)**. See [LICENSE](LICENSE) for details.

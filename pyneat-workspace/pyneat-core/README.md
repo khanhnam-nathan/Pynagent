@@ -1,6 +1,6 @@
-# PyNEAT Core - Open Source (AGPL)
+# Pynagent Core - Open Source (AGPL)
 
-This is the open-source core of PyNEAT, licensed under AGPL-3.0.
+This is the open-source core of Pynagent, licensed under AGPL-3.0.
 
 ## Features
 
@@ -23,25 +23,25 @@ cargo build --release
 ### CLI
 ```bash
 # Scan a file
-./target/release/pyneat-core scan file.py
+./target/release/Pynagent-core scan file.py
 
 # List rules
-./target/release/pyneat-core list-rules
+./target/release/Pynagent-core list-rules
 
 # Check specific code
-./target/release/pyneat-core check "import os; os.system('ls')"
+./target/release/Pynagent-core check "import os; os.system('ls')"
 ```
 
 ### Python
 ```python
-import pyneat_core
+import Pynagent_core
 
 # Scan code
-results = pyneat_core.scan_security("import os; os.system('ls')")
+results = Pynagent_core.scan_security("import os; os.system('ls')")
 print(results)
 
 # Parse LN-AST
-ast = pyneat_core.parse_ln_ast("def foo(): pass", "python")
+ast = Pynagent_core.parse_ln_ast("def foo(): pass", "python")
 print(ast)
 ```
 
@@ -53,7 +53,7 @@ See [LICENSE](../../LICENSE) for details.
 
 ## Advanced Features
 
-For advanced features (semantic analysis, type validation, AI bug detection), see [pyneat-pro-engine](../pyneat-pro-engine/README.md).
+For advanced features (semantic analysis, type validation, AI bug detection), see [Pynagent-pro-engine](../Pynagent-pro-engine/README.md).
 
 ## Contributing
 
@@ -61,4 +61,4 @@ Contributions are welcome! Please see [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 ## Copyright
 
-Copyright (C) 2026 PyNEAT Authors.
+Copyright (C) 2026 Pynagent Authors.

@@ -1,6 +1,6 @@
-# PyNeat: AI-Generated Code Cleaner
+# Pynagent: AI-Generated Code Cleaner
 
-**PyNeat 3.0.0** is a code scanning and cleanup tool built specifically for AI-generated code. Unlike generic linters, PyNeat targets the patterns that AI coding assistants systematically produce -- phantom packages, hallucinated parameters, resource leaks, OWASP vulnerabilities, AI-specific security risks -- and cleans them up automatically. Supports 9 languages.
+**Pynagent 3.0.0** is a code scanning and cleanup tool built specifically for AI-generated code. Unlike generic linters, Pynagent targets the patterns that AI coding assistants systematically produce -- phantom packages, hallucinated parameters, resource leaks, OWASP vulnerabilities, AI-specific security risks -- and cleans them up automatically. Supports 9 languages.
 
 ## What It Does
 
@@ -18,11 +18,11 @@ AI assistants are fast — but they generate code with predictable problems:
 - **Identity comparisons** — `is 200` instead of `== 200`
 - **Type checks** — `type(x) == list` instead of `isinstance(x, list)`
 
-PyNeat detects all of these and auto-fixes what it safely can.
+Pynagent detects all of these and auto-fixes what it safely can.
 
 ## Multi-Language Support
 
-PyNeat handles 9 languages natively:
+Pynagent handles 9 languages natively:
 
 | Language | Auto-fix | Security scan |
 |----------|---------|---------------|
@@ -42,23 +42,23 @@ For maximum speed on large multi-language codebases, enable the Rust backend.
 
 ```bash
 # Install
-pip install pyneat
+pip install Pynagent
 
 # Scan for issues
-pyneat check your_file.py
+Pynagent check your_file.py
 
 # Clean AI-generated code patterns
-pyneat clean your_file.py --dry-run --diff
+Pynagent clean your_file.py --dry-run --diff
 
 # Auto-fix (with backup)
-pyneat clean your_file.py --in-place --backup
+Pynagent clean your_file.py --in-place --backup
 ```
 
 For Python API usage and examples, see [docs/quickstart.md](docs/quickstart.md).
 
 ## 3-Tier Package System
 
-PyNeat uses three packages to balance safety vs. aggressiveness:
+Pynagent uses three packages to balance safety vs. aggressiveness:
 
 | Package | Use when |
 |---------|----------|
@@ -82,7 +82,7 @@ Runs automatically, no flags needed:
 ## Conservative Package
 
 ```bash
-pyneat clean your_file.py --package conservative
+Pynagent clean your_file.py --package conservative
 ```
 
 Adds: unused import removal, `.format()` → f-string, `@dataclass` suggestions, magic number detection, safe debug cleanup (`--safe-debug-clean`).
@@ -90,7 +90,7 @@ Adds: unused import removal, `.format()` → f-string, `@dataclass` suggestions,
 ## Destructive Package
 
 ```bash
-pyneat clean your_file.py --package destructive
+Pynagent clean your_file.py --package destructive
 ```
 
 Adds: import rewriting/reordering, naming convention enforcement (PascalCase), nested `if` flattening (Arrow Anti-pattern), TODO/FIXME removal, redundant expression simplification, dead code removal, `--aggressive-clean` (strip ALL `print()` calls), `--enable-all` for all rules at once.
@@ -152,7 +152,7 @@ Adds: import rewriting/reordering, naming convention enforcement (PascalCase), n
 | A10: SSRF | SEC-090 | Server-side request forgery |
 | Additional | SEC-091 to SEC-105 | XXE, path traversal, race condition, ReDoS, etc. |
 
-Run `pyneat check your_file.py --severity --cvss` for detailed scan with CVSS scores and CWE/OWASP references.
+Run `Pynagent check your_file.py --severity --cvss` for detailed scan with CVSS scores and CWE/OWASP references.
 
 ## AI Security Scanner (NEW)
 
@@ -181,29 +181,29 @@ Detects security risks specific to AI-generated code and AI applications:
 
 ## Rust Backend
 
-For large codebases, the Rust scanner (`pyneat-rs`) delivers 50x-100x speedup:
+For large codebases, the Rust scanner (`pynagent`) delivers 50x-100x speedup:
 
 ```bash
-pip install pyneat[rust]
-pyneat clean your_file.py --rust
+pip install Pynagent[rust]
+Pynagent clean your_file.py --rust
 ```
 
 Uses tree-sitter for AST parsing, pre-compiled regex patterns, and Rayon for parallel processing. No GIL contention for true parallelism.
 
-### Benchmark: PyNEAT vs the Competition
+### Benchmark: Pynagent vs the Competition
 
 Benchmarked on 200 Python files (~50K LOC) from real vulnerable codebases:
 
 | Tool | Time | Throughput | Security Rules | Languages |
 |------|------:|----------:|:------------:|:---------:|
-| **PyNEAT Rust** | **10.1 ms** | **20.4K/sec** | **200+** | **9** |
+| **Pynagent Rust** | **10.1 ms** | **20.4K/sec** | **200+** | **9** |
 | Ruff | 5.0 ms | 40.0K/sec | 0 | 1 |
 | Semgrep | 150 ms | 1.3K/sec | 1000+ | 30+ |
 | Bandit | 2000 ms | 100/sec | 70 | 1 |
 
-PyNEAT is **15x faster than Semgrep**, **200x faster than Bandit**, while detecting **53% more critical findings** on real-world vulnerable codebases.
+Pynagent is **15x faster than Semgrep**, **200x faster than Bandit**, while detecting **53% more critical findings** on real-world vulnerable codebases.
 
-For full benchmarks with detection rates and methodology, see [pyneat-rs/README.md](pyneat-rs/README.md).
+For full benchmarks with detection rates and methodology, see [pynagent/README.md](pynagent/README.md).
 
 ### Rust Backend Features
 
@@ -218,31 +218,31 @@ For full benchmarks with detection rates and methodology, see [pyneat-rs/README.
 ## Installation
 
 ```bash
-pip install pyneat
+pip install Pynagent
 ```
 
 Or from source:
 
 ```bash
-git clone https://github.com/khanhnam-nathan/Pyneat.git
-cd Pyneat
+git clone https://github.com/khanhnam-nathan/Pynagent.git
+cd Pynagent
 pip install -e .
 ```
 
 ## CLI Reference
 
-PyNeat exposes 8 commands:
+Pynagent exposes 8 commands:
 
 | Command | Description |
 |---------|-------------|
-| `pyneat clean` | Clean a single file |
-| `pyneat clean-dir` | Clean all files in a directory |
-| `pyneat check` | Security scan (no auto-fix) |
-| `pyneat rules` | List all available rules |
-| `pyneat explain` | Detailed explanation of a rule (CWE, OWASP, fix steps) |
-| `pyneat ignore` | Ignore a rule (per-file or globally) |
-| `pyneat report` | Export security report (JSON/SARIF/HTML) |
-| `pyneat security-db` | Manage CVE and GitHub Advisory databases |
+| `Pynagent clean` | Clean a single file |
+| `Pynagent clean-dir` | Clean all files in a directory |
+| `Pynagent check` | Security scan (no auto-fix) |
+| `Pynagent rules` | List all available rules |
+| `Pynagent explain` | Detailed explanation of a rule (CWE, OWASP, fix steps) |
+| `Pynagent ignore` | Ignore a rule (per-file or globally) |
+| `Pynagent report` | Export security report (JSON/SARIF/HTML) |
+| `Pynagent security-db` | Manage CVE and GitHub Advisory databases |
 
 Additional flags:
 
@@ -262,39 +262,39 @@ Additional flags:
 
 ```bash
 # Safe package (default) — zero risk
-pyneat clean your_file.py
+Pynagent clean your_file.py
 
 # Preview without writing
-pyneat clean your_file.py --dry-run --diff
+Pynagent clean your_file.py --dry-run --diff
 
 # In-place with backup
-pyneat clean your_file.py --in-place --backup
+Pynagent clean your_file.py --in-place --backup
 
 # Conservative — cleaner code
-pyneat clean your_file.py --package conservative
+Pynagent clean your_file.py --package conservative
 
 # Destructive — full sweep
-pyneat clean your_file.py --package destructive
+Pynagent clean your_file.py --package destructive
 ```
 
 ### Clean a directory
 
 ```bash
-pyneat clean-dir ./src --dry-run --diff
-pyneat clean-dir ./src --pattern "*.py" --in-place --backup --parallel
+Pynagent clean-dir ./src --dry-run --diff
+Pynagent clean-dir ./src --pattern "*.py" --in-place --backup --parallel
 ```
 
 ### Security scan
 
 ```bash
-pyneat check your_file.py --severity --cvss
-pyneat check ./src --fail-on critical --format sarif --output report.sarif
+Pynagent check your_file.py --severity --cvss
+Pynagent check ./src --fail-on critical --format sarif --output report.sarif
 ```
 
 ### Explain a rule
 
 ```bash
-pyneat explain SEC-001
+Pynagent explain SEC-001
 ```
 
 Shows: problem description, fix constraints, common mistakes, verification steps, documentation links.
@@ -303,33 +303,33 @@ Shows: problem description, fix constraints, common mistakes, verification steps
 
 ```bash
 # Ignore one instance at specific file + line
-pyneat ignore SEC-003 --file app.py --line 42 --reason "already sanitized"
+Pynagent ignore SEC-003 --file app.py --line 42 --reason "already sanitized"
 
 # Ignore globally for entire project
-pyneat ignore SEC-003 --global --reason "not applicable to our codebase"
+Pynagent ignore SEC-003 --global --reason "not applicable to our codebase"
 ```
 
 ### Export report
 
 ```bash
-pyneat report ./src -f sarif -o security.sarif      # GitHub Code Scanning
-pyneat report ./src -f json -o report.json          # Custom integration
-pyneat report ./src -f html -o report.html          # Human-readable
-pyneat report ./src -f codeclimate -o cc.json        # Code Climate
-pyneat report ./src -f junit -o junit.xml           # JUnit XML
+Pynagent report ./src -f sarif -o security.sarif      # GitHub Code Scanning
+Pynagent report ./src -f json -o report.json          # Custom integration
+Pynagent report ./src -f html -o report.html          # Human-readable
+Pynagent report ./src -f codeclimate -o cc.json        # Code Climate
+Pynagent report ./src -f junit -o junit.xml           # JUnit XML
 ```
 
 ### Manage security databases
 
 ```bash
-pyneat security-db --status   # Show CVE/GHSA database status
-pyneat security-db --update   # Update to latest CVE + GitHub Advisory
-pyneat security-db --force     # Force update (ignore cache age)
+Pynagent security-db --status   # Show CVE/GHSA database status
+Pynagent security-db --update   # Update to latest CVE + GitHub Advisory
+Pynagent security-db --force     # Force update (ignore cache age)
 ```
 
 ### Interactive Feature Menu
 
-After every `check`, `clean`, `rules`, or `report`, PyNeat shows a smart feature menu:
+After every `check`, `clean`, `rules`, or `report`, Pynagent shows a smart feature menu:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -338,19 +338,19 @@ After every `check`, `clean`, `rules`, or `report`, PyNeat shows a smart feature
 
 [A] 🔒 Security Check
     Quét lỗ hổng: SQL injection, path traversal, hardcoded secrets...
-    → pyneat check file.py
+    → Pynagent check file.py
 
 [B] 🧹 Clean Code
     Thêm type hints, xóa unused imports, số magic, debug prints...
-    → pyneat clean file.py
+    → Pynagent clean file.py
 
 [C] 📖 Explain Rule
     Nguyên nhân, cách fix, CWE/OWASP, verification steps...
-    → pyneat explain SEC-001
+    → Pynagent explain SEC-001
 
 [D] 📊 Export Report (JSON/SARIF)
     Tích hợp CI/CD: GitHub Code Scanning, GitLab SAST...
-    → pyneat report . -f sarif -o security.sarif
+    → Pynagent report . -f sarif -o security.sarif
 
 [q] Exit - return to terminal
 [Enter] Skip this menu
@@ -359,8 +359,8 @@ After every `check`, `clean`, `rules`, or `report`, PyNeat shows a smart feature
 ## Python API
 
 ```python
-from pyneat import clean_code, clean_file, analyze_code
-from pyneat import RuleEngine, CodeFile, RuleConfig
+from Pynagent import clean_code, clean_file, analyze_code
+from Pynagent import RuleEngine, CodeFile, RuleConfig
 
 # Clean code string
 result = clean_code("x == None")  # "x is not None"
@@ -379,8 +379,8 @@ for issue in report['issues']:
 ### Python API — Custom engine
 
 ```python
-from pyneat import RuleEngine, CodeFile
-from pyneat.rules import IsNotNoneRule, DebugCleaner
+from Pynagent import RuleEngine, CodeFile
+from Pynagent.rules import IsNotNoneRule, DebugCleaner
 
 engine = RuleEngine([
     IsNotNoneRule(),
@@ -394,7 +394,7 @@ result = engine.process_code_file(CodeFile(path=Path("demo.py"), content=source)
 Add to `pyproject.toml`:
 
 ```toml
-[tool.pyneat]
+[tool.Pynagent]
 package = "safe"                  # safe, conservative, destructive
 
 # Conservative
@@ -423,9 +423,9 @@ export_manifest = false
 repos:
   - repo: local
     hooks:
-      - id: pyneat-clean
-        name: PyNeat AI Code Cleaner
-        entry: pyneat clean --package conservative --in-place
+      - id: Pynagent-clean
+        name: Pynagent AI Code Cleaner
+        entry: Pynagent clean --package conservative --in-place
         language: system
         types: [python]
         pass_filenames: true
@@ -443,24 +443,24 @@ scripts\setup-pre-commit.bat
 ## GitHub Actions
 
 ```yaml
-name: PyNeat Code Quality
+name: Pynagent Code Quality
 on: [push, pull_request]
 jobs:
-  pyneat:
+  Pynagent:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-      - name: Install PyNeat
-        run: pip install pyneat
-      - name: Run PyNeat
-        run: pyneat clean-dir . --dry-run
+      - name: Install Pynagent
+        run: pip install Pynagent
+      - name: Run Pynagent
+        run: Pynagent clean-dir . --dry-run
 ```
 
 Full template at [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
 ### Manifest Export — CI/CD Integration
-- `ManifestExporter` writes `.pyneat.manifest.json` with all markers
+- `ManifestExporter` writes `.Pynagent.manifest.json` with all markers
 - `export_to_sarif()` — SARIF 2.1.0 format (GitHub Security, Azure DevOps)
 - `export_to_codeclimate()` — Code Climate format
 - `export_to_markdown()` — Human-readable report
@@ -472,7 +472,7 @@ Full template at [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
 ## VSCode Extension
 
-PyNeat is available as a VSCode/Cursor extension:
+Pynagent is available as a VSCode/Cursor extension:
 
 - **Real-time diagnostics** for Python, JavaScript, TypeScript
 - **Quick Fix** — auto-fix with one click
@@ -538,20 +538,20 @@ python -m build
 
 ## Editions & Commercial Support
 
-PyNeat uses a dual-licensing / freemium model.
+Pynagent uses a dual-licensing / freemium model.
 
-### PyNeat Community (current, free)
+### Pynagent Community (current, free)
 - **License:** GNU AGPLv3
-- **Engine:** Pure Python + Rust hybrid (`pyneat-rs`)
+- **Engine:** Pure Python + Rust hybrid (`pynagent`)
 - **Best for:** Individual developers, students, small projects
 - **Rust coverage:** ~30% of rules (security + quality)
 
-### PyNeat Standard (on request)
-- **Engine:** Full Rust (`pyneat-rs`) for extreme performance
+### Pynagent Standard (on request)
+- **Engine:** Full Rust (`pynagent`) for extreme performance
 - **Features:** Multi-threading, 50x-100x faster, deep CI/CD integration
 - **Best for:** Mid-sized teams, 1,000+ files
 
-### PyNeat Enterprise (on request)
+### Pynagent Enterprise (on request)
 - **Features:** Everything in Standard + Custom Ruleset API, Audit Reports, Dedicated SLA
 - **Best for:** Large enterprises
 
@@ -561,12 +561,12 @@ Contact: `khanhnam.copywriting@gmail.com`
 
 ## License
 
-PyNeat is free software: you can redistribute it and/or modify
+Pynagent is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
 by the Free Software Foundation, either version 3 of the License,
 or (at your option) any later version.
 
-PyNeat is distributed in the hope that it will be useful,
+Pynagent is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU Affero General Public License for more details.

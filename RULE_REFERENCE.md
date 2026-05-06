@@ -1,4 +1,4 @@
-# PyNeat Multi-Language Rule Reference
+# Pynagent Multi-Language Rule Reference
 
 > **Purpose**: AI agent instruction file — defines every rule, what it detects, severity, action (tag/fix), and example patterns for all supported languages.
 > **Version**: 1.0 — 2026-04-12
@@ -30,7 +30,7 @@ These rules use the `LanguageAdapter` interface and work with ANY language adapt
 | Field | Value |
 |-------|-------|
 | **ID** | `hardcoded-secrets` |
-| **File** | `pyneat/rules/universal/hardcoded_secrets.py` |
+| **File** | `Pynagent/rules/universal/hardcoded_secrets.py` |
 | **Severity** | `critical` |
 | **Action** | `TAG` — never auto-delete secrets, just flag them |
 | **CWE** | CWE-798 (Use of Hard-coded Credentials) |
@@ -128,7 +128,7 @@ password = ENV["PASSWORD"]
 | Field | Value |
 |-------|-------|
 | **ID** | `debug-artifacts` |
-| **File** | `pyneat/rules/universal/debug_artifacts.py` |
+| **File** | `Pynagent/rules/universal/debug_artifacts.py` |
 | **Severity** | `medium` |
 | **Action** | `FIX` — remove debug calls (mode: safe = smart, aggressive = all) |
 | **CWE** | CWE-489 (Active Debug Code) |
@@ -160,7 +160,7 @@ password = ENV["PASSWORD"]
 | Field | Value |
 |-------|-------|
 | **ID** | `empty-catch` |
-| **File** | `pyneat/rules/universal/empty_catch.py` |
+| **File** | `Pynagent/rules/universal/empty_catch.py` |
 | **Severity** | `high` |
 | **Action** | `TAG` — flag for review, suggest adding error handling |
 | **CWE** | CWE-390 (Detection of Error Condition Without Action) |
@@ -190,7 +190,7 @@ password = ENV["PASSWORD"]
 | Field | Value |
 |-------|-------|
 | **ID** | `sql-injection` |
-| **File** | `pyneat/rules/universal/sql_injection.py` |
+| **File** | `Pynagent/rules/universal/sql_injection.py` |
 | **Severity** | `critical` |
 | **Action** | `TAG` — flag, suggest parameterized queries |
 | **CWE** | CWE-89 (SQL Injection) |
@@ -221,7 +221,7 @@ password = ENV["PASSWORD"]
 | Field | Value |
 |-------|-------|
 | **ID** | `eval-detection` |
-| **File** | `pyneat/rules/universal/eval_detection.py` |
+| **File** | `Pynagent/rules/universal/eval_detection.py` |
 | **Severity** | `critical` |
 | **Action** | `TAG` — always flag, never auto-fix |
 | **CWE** | CWE-95 (Eval Injection) |
@@ -246,7 +246,7 @@ password = ENV["PASSWORD"]
 | Field | Value |
 |-------|-------|
 | **ID** | `arrow-antipattern` |
-| **File** | `pyneat/rules/universal/arrow_antipattern.py` |
+| **File** | `Pynagent/rules/universal/arrow_antipattern.py` |
 | **Severity** | `medium` |
 | **Action** | `TAG` at depth ≥ 4, `SUGGEST` guard clause refactoring |
 
@@ -274,7 +274,7 @@ password = ENV["PASSWORD"]
 | Field | Value |
 |-------|-------|
 | **ID** | `dead-code` |
-| **File** | `pyneat/rules/universal/dead_code.py` |
+| **File** | `Pynagent/rules/universal/dead_code.py` |
 | **Severity** | `low` |
 | **Action** | `TAG` — flag unused functions/classes, `FIX` in destructive mode |
 
@@ -291,7 +291,7 @@ password = ENV["PASSWORD"]
 | Field | Value |
 |-------|-------|
 | **ID** | `magic-numbers` |
-| **File** | `pyneat/rules/universal/magic_numbers.py` |
+| **File** | `Pynagent/rules/universal/magic_numbers.py` |
 | **Severity** | `info` |
 | **Action** | `TAG` — suggest extracting to named constant |
 
@@ -313,7 +313,7 @@ password = ENV["PASSWORD"]
 | Field | Value |
 |-------|-------|
 | **ID** | `strict-equality` |
-| **File** | `pyneat/rules/javascript/strict_equality.py` |
+| **File** | `Pynagent/rules/javascript/strict_equality.py` |
 | **Severity** | `medium` |
 | **Action** | `FIX` — replace `==` with `===`, `!=` with `!==` |
 
@@ -334,7 +334,7 @@ if (x == null) { }     // Intentional: checks null AND undefined
 | Field | Value |
 |-------|-------|
 | **ID** | `var-to-const` |
-| **File** | `pyneat/rules/javascript/var_to_const.py` |
+| **File** | `Pynagent/rules/javascript/var_to_const.py` |
 | **Severity** | `medium` |
 | **Action** | `FIX` — replace `var` with `const` (if never reassigned) or `let` |
 
@@ -356,7 +356,7 @@ let w = 0;       // Already let
 | Field | Value |
 |-------|-------|
 | **ID** | `console-log` |
-| **File** | `pyneat/rules/javascript/console_log.py` |
+| **File** | `Pynagent/rules/javascript/console_log.py` |
 | **Severity** | `medium` |
 | **Action** | `FIX` — remove entire statement |
 
@@ -367,7 +367,7 @@ let w = 0;       // Already let
 | Field | Value |
 |-------|-------|
 | **ID** | `unused-require` |
-| **File** | `pyneat/rules/javascript/unused_require.py` |
+| **File** | `Pynagent/rules/javascript/unused_require.py` |
 | **Severity** | `low` |
 | **Action** | `TAG` — flag unused, `FIX` in aggressive mode |
 
@@ -376,7 +376,7 @@ let w = 0;       // Already let
 | Field | Value |
 |-------|-------|
 | **ID** | `prototype-pollution` |
-| **File** | `pyneat/rules/javascript/prototype_pollution.py` |
+| **File** | `Pynagent/rules/javascript/prototype_pollution.py` |
 | **Severity** | `critical` |
 | **Action** | `TAG` |
 | **CWE** | CWE-1321 |
@@ -392,7 +392,7 @@ let w = 0;       // Already let
 | Field | Value |
 |-------|-------|
 | **ID** | `unchecked-error` |
-| **File** | `pyneat/rules/go/unchecked_error.py` |
+| **File** | `Pynagent/rules/go/unchecked_error.py` |
 | **Severity** | `high` |
 | **Action** | `TAG` — flag for review |
 
@@ -412,7 +412,7 @@ if err != nil { return err }
 | Field | Value |
 |-------|-------|
 | **ID** | `fmt-println` |
-| **File** | `pyneat/rules/go/fmt_println.py` |
+| **File** | `Pynagent/rules/go/fmt_println.py` |
 | **Severity** | `medium` |
 | **Action** | `FIX` — remove debug print statements |
 
@@ -421,7 +421,7 @@ if err != nil { return err }
 | Field | Value |
 |-------|-------|
 | **ID** | `defer-in-loop` |
-| **File** | `pyneat/rules/go/defer_in_loop.py` |
+| **File** | `Pynagent/rules/go/defer_in_loop.py` |
 | **Severity** | `high` |
 | **Action** | `TAG` — resource leak risk |
 
@@ -447,7 +447,7 @@ for _, file := range files {
 | Field | Value |
 |-------|-------|
 | **ID** | `shadow-variable` |
-| **File** | `pyneat/rules/go/shadow_variable.py` |
+| **File** | `Pynagent/rules/go/shadow_variable.py` |
 | **Severity** | `medium` |
 | **Action** | `TAG` |
 
@@ -462,7 +462,7 @@ for _, file := range files {
 | Field | Value |
 |-------|-------|
 | **ID** | `raw-types` |
-| **File** | `pyneat/rules/java/raw_types.py` |
+| **File** | `Pynagent/rules/java/raw_types.py` |
 | **Severity** | `medium` |
 | **Action** | `TAG` — suggest adding type parameters |
 
@@ -481,7 +481,7 @@ Map<String, Object> config = new HashMap<>();
 | Field | Value |
 |-------|-------|
 | **ID** | `sysout` |
-| **File** | `pyneat/rules/java/sysout.py` |
+| **File** | `Pynagent/rules/java/sysout.py` |
 | **Severity** | `medium` |
 | **Action** | `FIX` — remove, suggest using Logger |
 
@@ -494,7 +494,7 @@ Covered by universal `U-003`, uses Java's `catch_clause` node.
 | Field | Value |
 |-------|-------|
 | **ID** | `resource-leak` |
-| **File** | `pyneat/rules/java/resource_leak.py` |
+| **File** | `Pynagent/rules/java/resource_leak.py` |
 | **Severity** | `high` |
 | **Action** | `TAG` — suggest try-with-resources |
 | **CWE** | CWE-404 (Improper Resource Shutdown or Release) |
@@ -519,7 +519,7 @@ try (Connection conn = DriverManager.getConnection(url)) {
 | Field | Value |
 |-------|-------|
 | **ID** | `unwrap-usage` |
-| **File** | `pyneat/rules/rust_lang/unwrap_usage.py` |
+| **File** | `Pynagent/rules/rust_lang/unwrap_usage.py` |
 | **Severity** | `high` |
 | **Action** | `TAG` — suggest `?` operator or `expect()` with message |
 
@@ -547,7 +547,7 @@ fn test_something() {
 | Field | Value |
 |-------|-------|
 | **ID** | `unsafe-audit` |
-| **File** | `pyneat/rules/rust_lang/unsafe_audit.py` |
+| **File** | `Pynagent/rules/rust_lang/unsafe_audit.py` |
 | **Severity** | `high` |
 | **Action** | `TAG` — flag for security review |
 
@@ -566,7 +566,7 @@ unsafe {
 | Field | Value |
 |-------|-------|
 | **ID** | `unused-result` |
-| **File** | `pyneat/rules/rust_lang/unused_result.py` |
+| **File** | `Pynagent/rules/rust_lang/unused_result.py` |
 | **Severity** | `medium` |
 | **Action** | `TAG` — suggest handling or explicitly ignoring with `let _ =` |
 
@@ -577,7 +577,7 @@ unsafe {
 | Field | Value |
 |-------|-------|
 | **ID** | `clone-overuse` |
-| **File** | `pyneat/rules/rust_lang/clone_overuse.py` |
+| **File** | `Pynagent/rules/rust_lang/clone_overuse.py` |
 | **Severity** | `info` |
 | **Action** | `TAG` — suggest borrowing instead |
 
@@ -592,7 +592,7 @@ unsafe {
 | Field | Value |
 |-------|-------|
 | **ID** | `async-void` |
-| **File** | `pyneat/rules/csharp/async_void.py` |
+| **File** | `Pynagent/rules/csharp/async_void.py` |
 | **Severity** | `high` |
 | **Action** | `TAG` — suggest `async Task` instead |
 
@@ -620,7 +620,7 @@ private async void Button_Click(object sender, EventArgs e) {
 | Field | Value |
 |-------|-------|
 | **ID** | `console-writeline` |
-| **File** | `pyneat/rules/csharp/console_writeline.py` |
+| **File** | `Pynagent/rules/csharp/console_writeline.py` |
 | **Severity** | `medium` |
 | **Action** | `FIX` — remove, suggest `ILogger` |
 
@@ -629,7 +629,7 @@ private async void Button_Click(object sender, EventArgs e) {
 | Field | Value |
 |-------|-------|
 | **ID** | `disposable-leak` |
-| **File** | `pyneat/rules/csharp/disposable_leak.py` |
+| **File** | `Pynagent/rules/csharp/disposable_leak.py` |
 | **Severity** | `high` |
 | **Action** | `TAG` — suggest `using` block |
 | **CWE** | CWE-404 |
@@ -651,7 +651,7 @@ using (var stream = File.OpenRead("f.txt")) { }
 | Field | Value |
 |-------|-------|
 | **ID** | `raw-sql` |
-| **File** | `pyneat/rules/csharp/raw_sql.py` |
+| **File** | `Pynagent/rules/csharp/raw_sql.py` |
 | **Severity** | `critical` |
 | **Action** | `TAG` — suggest parameterized queries |
 
@@ -664,7 +664,7 @@ using (var stream = File.OpenRead("f.txt")) { }
 | Field | Value |
 |-------|-------|
 | **ID** | `var-dump` |
-| **File** | `pyneat/rules/php/var_dump.py` |
+| **File** | `Pynagent/rules/php/var_dump.py` |
 | **Severity** | `medium` |
 | **Action** | `FIX` — remove debug output calls |
 
@@ -675,7 +675,7 @@ using (var stream = File.OpenRead("f.txt")) { }
 | Field | Value |
 |-------|-------|
 | **ID** | `deprecated-mysql` |
-| **File** | `pyneat/rules/php/deprecated_mysql.py` |
+| **File** | `Pynagent/rules/php/deprecated_mysql.py` |
 | **Severity** | `critical` |
 | **Action** | `TAG` — suggest PDO or mysqli |
 
@@ -697,7 +697,7 @@ $stmt->execute([$param]);
 | Field | Value |
 |-------|-------|
 | **ID** | `variable-variables` |
-| **File** | `pyneat/rules/php/variable_variables.py` |
+| **File** | `Pynagent/rules/php/variable_variables.py` |
 | **Severity** | `high` |
 | **Action** | `TAG` — suggest associative array |
 | **CWE** | CWE-914 (Improper Control of Dynamically-Identified Variables) |
@@ -718,7 +718,7 @@ $data[$varname] = "value"; // Use associative array instead
 | Field | Value |
 |-------|-------|
 | **ID** | `extract-usage` |
-| **File** | `pyneat/rules/php/extract_usage.py` |
+| **File** | `Pynagent/rules/php/extract_usage.py` |
 | **Severity** | `critical` |
 | **Action** | `TAG` — suggest explicit variable assignment |
 | **CWE** | CWE-621 (Variable Extraction Error) |
@@ -743,7 +743,7 @@ $email = $_POST['email'];
 | Field | Value |
 |-------|-------|
 | **ID** | `puts-removal` |
-| **File** | `pyneat/rules/ruby/puts_removal.py` |
+| **File** | `Pynagent/rules/ruby/puts_removal.py` |
 | **Severity** | `medium` |
 | **Action** | `FIX` — remove debug output |
 
@@ -754,7 +754,7 @@ $email = $_POST['email'];
 | Field | Value |
 |-------|-------|
 | **ID** | `eval-usage` |
-| **File** | `pyneat/rules/ruby/eval_usage.py` |
+| **File** | `Pynagent/rules/ruby/eval_usage.py` |
 | **Severity** | `critical` |
 | **Action** | `TAG` |
 
@@ -775,7 +775,7 @@ obj.instance_eval { @ivar }         # Block form, no injection risk
 | Field | Value |
 |-------|-------|
 | **ID** | `send-injection` |
-| **File** | `pyneat/rules/ruby/send_injection.py` |
+| **File** | `Pynagent/rules/ruby/send_injection.py` |
 | **Severity** | `high` |
 | **Action** | `TAG` — flag when argument comes from user input |
 | **CWE** | CWE-470 (Use of Externally-Controlled Input to Select Classes or Code) |
@@ -796,7 +796,7 @@ obj.send(method) if ALLOWED.include?(method)
 | Field | Value |
 |-------|-------|
 | **ID** | `binding-pry` |
-| **File** | `pyneat/rules/ruby/binding_pry.py` |
+| **File** | `Pynagent/rules/ruby/binding_pry.py` |
 | **Severity** | `high` |
 | **Action** | `FIX` — remove debugger statements |
 
@@ -927,7 +927,7 @@ These rules specifically target patterns that AI coding assistants commonly intr
 
 ### Severity → Exit Code Mapping
 
-For CI/CD integration (`pyneat check --fail-on`):
+For CI/CD integration (`Pynagent check --fail-on`):
 
 | Severity | Exit Code | Block CI? |
 |----------|-----------|-----------|

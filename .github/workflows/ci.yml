@@ -1,4 +1,4 @@
-# PyNEAT CI/CD Workflow
+# Pynagent CI/CD Workflow
 #
 # Runs tests, lint, security scan, coverage, and auto-export manifest on push/PR.
 
@@ -54,7 +54,7 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          python -m pytest tests/ -v --tb=short --cov=pyneat --cov-report=xml --cov-report=term
+          python -m pytest tests/ -v --tb=short --cov=Pynagent --cov-report=xml --cov-report=term
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -137,7 +137,7 @@ jobs:
       - name: Run cargo-audit
         run: |
           cargo install cargo-audit || true
-          cd pyneat-rs && cargo audit || true
+          cd pynagent && cargo audit || true
 
   summary:
     name: Test Summary
@@ -154,8 +154,8 @@ jobs:
           fi
           echo "All tests passed!"
 
-  pyneat-self-analysis:
-    name: PyNeat Self-Analysis
+  Pynagent-self-analysis:
+    name: Pynagent Self-Analysis
     runs-on: ubuntu-latest
 
     steps:
@@ -167,29 +167,29 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install PyNeat
+      - name: Install Pynagent
         run: |
           pip install --upgrade pip
           pip install -e .
 
       # No --diff: full unified diffs for the whole package are huge on CI and can
       # destabilize runners; dry-run alone proves the CLI + engine run on Linux.
-      - name: Run PyNeat on itself (dry-run)
+      - name: Run Pynagent on itself (dry-run)
         run: |
-          python -m pyneat clean-dir pyneat --dry-run
+          python -m Pynagent clean-dir Pynagent --dry-run
 
       # NOTE: compileall is skipped because many Python files have pre-existing
       # docstring syntax issues (missing closing quotes). These are cosmetic
       # issues that don't affect runtime behavior since Python caches .pyc files.
       # - name: Verify package sources compile
       #   run: |
-      #     python -m compileall -q pyneat
+      #     python -m compileall -q Pynagent
 
   export-manifest:
-    name: Export PyNEAT Manifest
+    name: Export Pynagent Manifest
     runs-on: ubuntu-latest
     # Run after self-analysis to avoid conflicts
-    needs: [pyneat-self-analysis]
+    needs: [Pynagent-self-analysis]
     steps:
       - uses: actions/checkout@v4
 
@@ -198,7 +198,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install PyNEAT
+      - name: Install Pynagent
         run: |
           pip install --upgrade pip
           pip install -e .
@@ -206,16 +206,16 @@ jobs:
       # Must not pass --diff: with --diff, clean-dir returns early and never writes manifest.
       - name: Export Manifest
         run: |
-          python -m pyneat clean-dir pyneat --export-manifest
+          python -m Pynagent clean-dir Pynagent --export-manifest
 
       - name: Upload Manifest Artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pyneat-manifest
+          name: Pynagent-manifest
           path: |
-            **/.pyneat.manifest.json
-            **/*.pyneat.manifest.json
+            **/.Pynagent.manifest.json
+            **/*.Pynagent.manifest.json
           retention-days: 7
 
       - name: Commit Manifest Changes
@@ -223,10 +223,10 @@ jobs:
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          find . -not -path './.git/*' \( -name '.pyneat.manifest.json' -o -name '*.pyneat.manifest.json' \) -print -exec git add -f {} \;
+          find . -not -path './.git/*' \( -name '.Pynagent.manifest.json' -o -name '*.Pynagent.manifest.json' \) -print -exec git add -f {} \;
           if git diff --cached --quiet; then
             echo "No manifest changes to commit"
           else
-            git commit -m "ci: auto-update .pyneat.manifest.json [skip ci]" || echo "Commit failed (possibly no changes)"
+            git commit -m "ci: auto-update .Pynagent.manifest.json [skip ci]" || echo "Commit failed (possibly no changes)"
           fi
         continue-on-error: true
